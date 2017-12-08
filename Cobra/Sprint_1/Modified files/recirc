@@ -1,0 +1,116 @@
+ int status = 0;
+  int ret;
+  HW_LOGPORT logPort;
+  uint32_t   regData;
+  uint32_t   twoWordData[2];
+  uint32_t  *counterData;
+  uint32_t   chipPort;
+
+  status = pv_vports_port_get(port, &chipPort);
+  if (status) return status;
+
+  if (recirc_enable) {
+    /* MIPMISC Configuration */
+    asicMipmiscReadReg32(thisCpu, NG_MIPMISC_MAC_CONFIG, chipPort,
+                         &regData);
+    asicSetFieldToData(0, NG_MIPMISC_MAC_CONFIG, MAC_MAC_SPEED_s2MAC, 0x7,
+                       &regData);
+    asicMipmiscWriteReg32(thisCpu, NG_MIPMISC_MAC_CONFIG, chipPort,
+                          regData);
+
+    asicMipmiscReadReg32(thisCpu, NG_MIPMISC_MAC_CONFIG, chipPort,
+                         &regData);
+    asicSetFieldToData(0, NG_MIPMISC_MAC_CONFIG, MAC_MAC_RESET_L, 0x1,
+                       &regData);
+    asicMipmiscWriteReg32(thisCpu, NG_MIPMISC_MAC_CONFIG, chipPort,
+                          regData);
+
+    /* MAC Configuration*/
+    twoWordData[0] = 0;
+    twoWordData[1] = 0;
+    asicWriteMem(thisCpu, NEO_MAC_RECIRC_PORT_SRC_ADDR_RECIRC_STATIC,
+                 chipPort, &twoWordData[0]);
+
+    regData = 0;
+    asicSetFieldToData(thisCpu, NEO_MAC_RECIRC_PORT_RESET_D3BA,
+                       D3BA_PKR_EN, 1, &regData);
+    asicSetFieldToData(thisCpu, NEO_MAC_RECIRC_PORT_RESET_D3BA,
+                       D3BA_OFP_RESET_L, 1, &regData);
+    asicSetFieldToData(thisCpu, NEO_MAC_RECIRC_PORT_RESET_D3BA,
+                       D3BA_UNPKR_RESET_L, 1, &regData);
+    asicSetFieldToData(thisCpu, NEO_MAC_RECIRC_PORT_RESET_D3BA,
+                       D3BA_CP_RESET_L, 1, &regData);
+    asicWriteReg32(thisCpu, NEO_MAC_RECIRC_PORT_RESET_D3BA, chipPort,
+                   regData);
+
+    asicWriteField32(thisCpu, NEO_MAC_RECIRC_DOUBLEQ_TAG_CTRL_D3BA_STATIC,
+                     chipPort, STATIC_USE_CFI_AS_DEI_IN_CTAG, 1);
+
+    /* Add FPS_ENCAPS_SIZE to MAX_UNTAGGED_FRAME_SIZE to make sure that
+     * FPS packets aren't dropped when they go through the recirc
+     * port.  If a packet it too big, it will have been filtered
+     * when the packet first ingressed into the ASIC. */
+    asicWriteField32(thisCpu, NEO_MAC_RECIRC_MAX_PKT_LEN_RECIRC_STATIC,
+                     chipPort, MAX_PKT_LEN,
+                #ifdef FTR_FPS
+                     FPS_ENCAPS_SIZE +
+                #endif /* FTR_FPS */
+                     MAX_UNTAGGED_FRAME_SIZE);
+
+    /* IPP Configuration */
+    hw_ipp_recircPortInit(chipPort);
+
+    /* Program HPP and FR logport */
+    logPort = (HW_LOGPORT_TRUNK_BIT | HW_TUF_RECIRC_TRUNK_IDX);
+
+    ret = portRegs_logPortWrite(thisCpu, chipPort, logPort, 0);
+    if (ret != 0) ASSERT(ret == 0);
+
+    /* Program HPP */
+    portRegs_StackRecircPortWrite(thisCpu, chipPort, PORT_REGS_SR_RECIRC, 1, 0);
+
+    /* Program FR */
+    portRegs_egressWrite(0, chipPort, PORT_REGS_EGRESS_PORT_DISABLE, 0, 0);
+    portRegs_egressWrite(0, chipPort, PORT_REGS_EGRESS_JUMBO,        1, 0);
+
+    /* Program Counters */
+    counterData = (uint32_t *)malloc(2048 * sizeof(uint32_t));
+    ASSERT(counterData != NULL);
+
+    /* clear this memory segment */
+    memset(counterData, 0, 2048 * sizeof(uint32_t));
+
+    asicWriteMem(thisCpu, NEO_MAC_RECIRC_CP_MEM_OFFSET_CS_P, chipPort,
+                 counterData);
+
+    asicWriteReg32(0, NEO_MAC_RECIRC_QUEUE_PAUSED_CNTR_OFFSET_P, chipPort, 0);
+
+    free(counterData);
+
+    return PV_OK;
+  } else {
+    /* Program FR */
+    portRegs_egressWrite(0, chipPort, PORT_REGS_EGRESS_PORT_DISABLE, 1, 0);
+
+    /* MAC Configuration*/
+    regData = 0;
+    asicSetFieldToData(thisCpu, NEO_MAC_RECIRC_PORT_RESET_D3BA,
+                       D3BA_PKR_EN, 0, &regData);
+    asicSetFieldToData(thisCpu, NEO_MAC_RECIRC_PORT_RESET_D3BA,
+                       D3BA_OFP_RESET_L, 0, &regData);
+    asicSetFieldToData(thisCpu, NEO_MAC_RECIRC_PORT_RESET_D3BA,
+                       D3BA_UNPKR_RESET_L, 0, &regData);
+    asicSetFieldToData(thisCpu, NEO_MAC_RECIRC_PORT_RESET_D3BA,
+                       D3BA_CP_RESET_L, 0, &regData);
+    asicWriteReg32(thisCpu, NEO_MAC_RECIRC_PORT_RESET_D3BA, chipPort,
+                   regData);
+
+    /* MIPMISC Configuration */
+    asicMipmiscReadReg32(thisCpu, NG_MIPMISC_MAC_CONFIG, chipPort,
+                         &regData);
+    asicSetFieldToData(0, NG_MIPMISC_MAC_CONFIG, MAC_MAC_RESET_L, 0x0,
+                       &regData);
+    asicMipmiscWriteReg32(thisCpu, NG_MIPMISC_MAC_CONFIG, chipPort,
+                          regData);
+    return PV_OK;
+  }

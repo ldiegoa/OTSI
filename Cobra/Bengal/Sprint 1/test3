@@ -1,0 +1,1201 @@
+/*
+ * Copyright (C) 2017 Hewlett Packard Enterprise Development LP.
+ * All Rights Reserved.
+ *
+ * The contents of this software are proprietary and confidential to the
+ * Hewlett Packard Enterprise Development LP. No part of this program may be
+ * photocopied, reproduced, or translated into another programming language
+ * without prior written consent of the Hewlett Packard Enterprise
+ * Development LP.
+ */
+
+// Global test headers
+#include <pvtest/pvtest.hpp>
+
+// Test-specific headers
+#include <provision/internal/ucx/profile_subsystem/pvi_ucx_profile_mgr.h>
+#include <provision/pv_vlans.h>
+#include <provision/internal/utils/matrix/pvi_matrix_util.h>
+#include <legacy/pv/superprimitives/pvi_matrix_hpp_vlans.h>
+#include <legacy/pv/superprimitives/pvi_matrix_fr.h>
+#include <legacy/pv/superprimitives/pvi_matrix_clue.h>
+#include <legacy/pv/asic/modules/HPP.h>
+#include <legacy/pv/pacuare/modules/OM.h>
+#include <provision/internal/fli/vports/pvi_vports_mgr.h>
+
+#define NODE_ID 0
+#define CHASSIS_ID 0
+#define NODE_ID_1 1
+#define MAX_PORT_TEST 57
+#define MAX_ETHER_TYPE 0xFFFF
+
+#define HPP_MBV_TCAM_ENABLE 1U
+#define OM_FP_PORTS_CHIPS 35
+#define PV_FR_CONDUIT1_MASK_LOWER 0x0
+#define PV_FR_CONDUIT1_MASK_UPPER 0x4000000U
+
+#define RESET_VALUE 0U
+
+// Return the address of a given Vid2Vlan entry
+#define VID2VLAN_ENTRY_WORD_ZERO(IDX) \
+  (NEO_HPP_VIDTOVLAN_NUMBER_MAPPING_TABLE_PHYS_BASE_ADDRESS + (IDX * 8))
+
+#define VID2VLAN_ENTRY_WORD_ONE(IDX) (VID2VLAN_ENTRY_WORD_ZERO(IDX) + 0x4)
+
+// Return the address of a given Vid2Vlan entry
+#define OM_VLAN_ENTRY(BASE, IDX, FP_GROUP_PORT) \
+  (BASE + (IDX * 4) + (FP_GROUP_PORT * 0x4))
+
+const uint32_t R2_OM_R4CR2_VLAN_RAM_FP_GRPX_PHYS_BASE_ADDRESS[4][1] =
+{   { R2_OM_R4CR2_VLAN_RAM_FP_GRP0_PHYS_BASE_ADDRESS },
+    { R2_OM_R4CR2_VLAN_RAM_FP_GRP1_PHYS_BASE_ADDRESS },
+    { R2_OM_R4CR2_VLAN_RAM_FP_GRP2_PHYS_BASE_ADDRESS },
+    { R2_OM_R4CR2_VLAN_RAM_FP_GRP3_PHYS_BASE_ADDRESS } };
+
+const uint32_t R2_OM_MBM_RD_ARB_COS_REMAP_RAM_FP_GRPX_PHYS_BASE_ADDRESS[4][1] =
+{    { R2_OM_MBM_RD_ARB_COS_REMAP_RAM_FP_GRP0_PHYS_BASE_ADDRESS },
+     { R2_OM_MBM_RD_ARB_COS_REMAP_RAM_FP_GRP1_PHYS_BASE_ADDRESS },
+     { R2_OM_MBM_RD_ARB_COS_REMAP_RAM_FP_GRP2_PHYS_BASE_ADDRESS },
+     { R2_OM_MBM_RD_ARB_COS_REMAP_RAM_FP_GRP3_PHYS_BASE_ADDRESS } };
+
+
+// The fixture for testing class
+class pv_vlans_matrix : public ::testing::Test {
+protected:
+
+  pv_vlans_matrix() {
+    // You can do set-up work for each test here.
+  }
+
+  virtual ~pv_vlans_matrix()
+  {
+    // You can do clean-up work that doesn't throw exceptions here.
+  }
+
+  virtual void SetUp()
+  {
+    // Initialize the ASIC. Work here is performed before every test begins
+    // the execution.
+    int status           = 0;
+    uint32_t port_number = 0;
+    struct pv_vport vport[MAX_PORT_TEST];
+    struct pv_asic_config asic_config = {
+      .chassis_num = 0,
+      .node_num    = 0
+    };
+
+    RecordProperty("seed", pvtest_rand.sync_seed());
+
+    // Initialize the Provision SDK framework
+    status = pv_initialize();
+    ASSERT_EQ(PV_OK, status);
+
+    // Attach the provision SDK to the Node 0
+    status = pv_attach(NODE_ID,
+                       "bttf:///sim",
+                       false,
+                       "",
+                       "pacuare/pacuare_base.yaml");
+    EXPECT_EQ(PV_OK, status);
+
+    // Initialize the ASIC hardware
+    status = pv_asic_initialize(NODE_ID, asic_config);
+    EXPECT_EQ(PV_OK, status);
+
+    /* Enable subsystem's API events */
+    for (port_number = 0; port_number < MAX_PORT_TEST; ++port_number)
+    {
+      status =
+        pv_vports_phys_port_init(CHASSIS_ID, NODE_ID, port_number,
+                                 &vport[port_number]);
+      EXPECT_EQ(0, status);
+
+      status = pvi_vports_mgr_vport_create(NODE_ID, vport[port_number]);
+      EXPECT_EQ(0, status);
+    }
+  }
+
+  // Cleanup performed after the tests complete the execution
+  virtual void TearDown()
+  {
+    int status = 0;
+
+    // Uninitialize the provision
+    status = pv_deattach(NODE_ID);
+    EXPECT_EQ(PV_OK, status);
+
+    // Terminates the ProVision SDK library and releases all memory
+    status = pv_terminate();
+    ASSERT_EQ(PV_OK, status);
+
+    // Code here will be called immediately after each test (right
+    // before the destructor)
+  }
+
+  // Objects declared here can be used by all tests in the test case for
+  // pv_vlans.
+};
+
+// This function is used in port tagging to calculate register address given a
+// VID and a port
+
+static uint32_t chip_port_to_fp_group(int chip_port, int i)
+{
+  uint32_t reg_address = 0;
+  int base_address     = 0;
+  int fp_port_group    = 0;
+
+  // calculate FP group and FP group port number identification
+  base_address  = (chip_port + 2) % 4;
+  fp_port_group = ((chip_port + 2) / 4) - 1;
+
+  // choose adequate register base address for FP group port number
+  switch (base_address) {
+  case 0:
+    reg_address = OM_VLAN_ENTRY(R2_OM_R4CR2_VLAN_RAM_FP_GRP0_PHYS_BASE_ADDRESS,
+                                i,
+                                fp_port_group);
+    break;
+
+  case 1:
+    reg_address = OM_VLAN_ENTRY(R2_OM_R4CR2_VLAN_RAM_FP_GRP1_PHYS_BASE_ADDRESS,
+                                i,
+                                fp_port_group);
+    break;
+
+  case 2:
+    reg_address = OM_VLAN_ENTRY(R2_OM_R4CR2_VLAN_RAM_FP_GRP2_PHYS_BASE_ADDRESS,
+                                i,
+                                fp_port_group);
+    break;
+
+  case 3:
+    reg_address = OM_VLAN_ENTRY(R2_OM_R4CR2_VLAN_RAM_FP_GRP3_PHYS_BASE_ADDRESS,
+                                i,
+                                fp_port_group);
+    break;
+  }
+  return reg_address;
+}
+
+TEST_F(pv_vlans_matrix, init_uninit) {
+  int status = 0;
+
+  // uint32_t hpp_port_max_entries_read       = 0;
+  uint32_t i                               = 0;
+  uint32_t read_value                      = 0;
+  uint32_t hpp_mbv_tcam_en_mbv_tcam_enable = 0;
+  uint32_t base_addr                       = 0;
+  uint32_t rnd_start                       = 0;
+
+
+  // ----Start for initialization tests----
+
+  status = pv_vlans_initialize(NODE_ID);
+  EXPECT_EQ(PV_OK, status);
+
+  // --Test Port config initialization--
+  // 1. Check that all 64 x (8 x 32-bit) regs are set 0
+
+  // Regs check: ip_sa_sec_port_and_vlan_mode[25]
+  //             ip_flow_sec_port_and_vlan_mode[24]
+  //             ip_sa_feature_port_and_vlan_mode[23]
+  //             ip_flow_feature_port_and_vlan_mode[22]
+  for (i = 0; i < MAX_MATRIX_PORTS_PER_NODE; i++) {
+    status = pv_registerRead(REGID_NEO_HPP_PORT_OFFSET_2,
+                             0,
+                             i,
+                             &read_value);
+    EXPECT_EQ(PV_OK, status);
+    read_value = read_value & 0x03C00000;
+    EXPECT_EQ(0U,    read_value);
+  }
+
+  // --Test MBV initialization--
+  // 1. Check HPP MBV TCAM enable loaded from profile
+  // 2. Check HPP MBV TCAM enable from HW
+  // 3. Check that all HPP MBV regs are set to 0
+  status =
+    pvi_ucx_profile_mgr_int_param_get(NODE_ID,
+                                      PVI_PROFILE_CONFIG_TYPE_HW_CONF,
+                                      "HPP_MBV_TCAM_ENABLE",
+                                      &hpp_mbv_tcam_en_mbv_tcam_enable);
+  EXPECT_EQ(PV_OK,               status);
+  EXPECT_EQ(HPP_MBV_TCAM_ENABLE, hpp_mbv_tcam_en_mbv_tcam_enable);
+
+  status = pv_registerRead(REGID_R2_HPP_MBV_VRF_TCAM_ENABLE,
+                           0,
+                           0,
+                           &read_value);
+  EXPECT_EQ(PV_OK, status);
+
+  read_value = VALUE_OF_FIELD(&read_value,
+                              FIELDID_HPP_MBV_VRF_TCAM_EN_MBV_TCAM_ENABLE);
+  EXPECT_EQ(hpp_mbv_tcam_en_mbv_tcam_enable, read_value);
+
+  // TODO: You just need to clear the valid bit for each entry.
+  // The valid bit is in just one of the 4 words.
+
+  status = pv_registerRead(REGID_NEO_HPP_MBV_TCAM_SEARCH_DATA_WORD_0,
+                           0,
+                           0,
+                           &read_value);
+  EXPECT_EQ(PV_OK,       status);
+  EXPECT_EQ(RESET_VALUE, read_value);
+
+  status = pv_registerRead(REGID_R2_HPP_MBV_TCAM_SEARCH_DATA_WORD_1,
+                           0,
+                           0,
+                           &read_value);
+  EXPECT_EQ(PV_OK,       status);
+  EXPECT_EQ(RESET_VALUE, read_value);
+
+  status = pv_registerRead(REGID_R2_HPP_MBV_TCAM_SEARCH_DATA_WORD_2,
+                           0,
+                           0,
+                           &read_value);
+  EXPECT_EQ(PV_OK,       status);
+  EXPECT_EQ(RESET_VALUE, read_value);
+
+  status = pv_registerRead(REGID_R2_HPP_MBV_TCAM_RESULT_DATA,
+                           0,
+                           0,
+                           &read_value);
+  EXPECT_EQ(PV_OK,       status);
+  EXPECT_EQ(RESET_VALUE, read_value);
+
+  // --Test VID to VLAN Number Mapping Table initialization--
+  for (i = 0; i <= PV_MAX_VID_NUMBER; i++) {
+    status = pv_registerRead(REGID_NEO_HPP_VIDTOVLAN_NUMBER_MAPPING_TABLE,
+                             0,
+                             i,
+                             &read_value);
+    EXPECT_EQ(PV_OK,       status);
+    EXPECT_EQ(RESET_VALUE, read_value);
+
+    status = pv_physAddressRead(VID2VLAN_ENTRY_WORD_ZERO(i), &read_value);
+    EXPECT_EQ(RESET_VALUE, read_value);
+
+    // Check reg: src_vlan_num_illegal[22]
+    status = pv_physAddressRead(VID2VLAN_ENTRY_WORD_ONE(i), &read_value);
+    EXPECT_EQ(0x00400000U, read_value);
+  }
+
+  // --Test for MIST table initialization
+  LONG_REGISTER(long_reg, 4);
+  INIT_LONG_REGISTER(long_reg);
+  pv_longRegisterClear(&long_reg);
+
+  // TODO: PV_MAX_VID_NUMBER is defined in pv_vlans.h,
+  // should we read the value from HW profile instead?
+  for (i = 0; i < PV_MAX_VID_NUMBER; i++) {
+    status = pv_longRegisterRead(REGID_NEO_HPP_MIST_TABLE_0,
+                                 0,
+                                 i,
+                                 &long_reg,
+                                 -1);
+    EXPECT_EQ(PV_OK, status);
+
+    for (uint8_t x = 0; x < 4; x++) {
+      EXPECT_EQ(0U, long_reg.words[x]);
+    }
+  }
+
+  // --Test VID Remap Table initialization--
+  // 1. Check that VLAN RAM is set to default values
+  // 2. Check that COS REMAP RAM is set to default values
+  for (i = 0; i < OM_VID_REMAP_RAM_ENTRIES; i++) {
+    for (base_addr = 0; base_addr < 4; base_addr++) {
+      status = pv_physAddressRead(
+        R2_OM_R4CR2_VLAN_RAM_FP_GRPX_PHYS_BASE_ADDRESS[base_addr][0] +
+        (i << 2),
+        &read_value);
+
+      // Check reg: remapped_vid[11:0]
+      read_value = read_value & 0x00000FFF;
+      EXPECT_EQ(PV_OK, status);
+      EXPECT_EQ(0U,    read_value);
+    }
+  }
+
+  // Check regs: parity[8]
+  //             remapped_prov_dei[7]
+  //             remapped_user_dei[6]
+  //             remapped_prov_cos[5:3]
+  //             remapped_user_cos[2:0]
+  for (i = 0; i < OM_COS_REMAP_RAM_ENTRIES; i++) {
+    for (base_addr = 0; base_addr < 4; base_addr++) {
+      status = pv_physAddressRead(
+        R2_OM_MBM_RD_ARB_COS_REMAP_RAM_FP_GRPX_PHYS_BASE_ADDRESS[base_addr][0] +
+        (i << 2),
+        &read_value);
+      EXPECT_EQ(PV_OK,  status);
+      EXPECT_EQ(0x100U, read_value);
+    }
+  }
+
+  // --Test VLAN Tagging Table initialization--
+  // 1. Check that VLAN TAGGING RAM is set to default init. values
+  // 2. Read user regs and check that are set to 0s
+  // 3. Read provider regs and check that are set to 0s
+
+  // Check regs: parityforece[14]
+  //             force_prov_tag[13]
+  //             force_user_tag[12]
+  for (i = 0; i < OM_VID_REMAP_RAM_ENTRIES; i++) {
+    for (base_addr = 0; base_addr < 4; base_addr++) {
+      status = pv_physAddressRead(
+        R2_OM_R4CR2_VLAN_RAM_FP_GRPX_PHYS_BASE_ADDRESS[base_addr][0] +
+        (i << 2),
+        &read_value);
+      read_value = read_value & 0x00003000;
+      EXPECT_EQ(PV_OK, status);
+      EXPECT_EQ(0U,    read_value);
+    }
+  }
+
+  // check registers in OM for user vlan tag configurations are left clean
+  // Read each register and compare to expected value of 0
+  status = pv_registerRead(REGID_NEO_OM_FP_MISC_USER_VLAN_CONFIG_0,
+                           0,
+                           0,
+                           &read_value);
+  EXPECT_EQ(PV_OK,       status);
+  EXPECT_EQ(RESET_VALUE, read_value);
+
+  status = pv_registerRead(REGID_NEO_OM_FP_MISC_USER_VLAN_CONFIG_1,
+                           0,
+                           0,
+                           &read_value);
+  EXPECT_EQ(PV_OK,       status);
+  EXPECT_EQ(RESET_VALUE, read_value);
+
+  status = pv_registerRead(REGID_NEO_OM_FP_MISC_USER_VLAN_CONFIG_2,
+                           0,
+                           0,
+                           &read_value);
+  EXPECT_EQ(PV_OK,       status);
+  EXPECT_EQ(RESET_VALUE, read_value);
+
+  status = pv_registerRead(REGID_NEO_OM_FP_MISC_USER_VLAN_CONFIG_3,
+                           0,
+                           0,
+                           &read_value);
+  EXPECT_EQ(PV_OK,       status);
+  EXPECT_EQ(RESET_VALUE, read_value);
+
+  // check registers in OM for provider vlan tag configurations are left clean
+  // Read each register and compare to expected value of 0
+  status = pv_registerRead(REGID_NEO_OM_FP_MISC_PROV_VLAN_CONFIG_0,
+                           0,
+                           0,
+                           &read_value);
+  EXPECT_EQ(PV_OK,       status);
+  EXPECT_EQ(RESET_VALUE, read_value);
+
+  status = pv_registerRead(REGID_NEO_OM_FP_MISC_PROV_VLAN_CONFIG_1,
+                           0,
+                           0,
+                           &read_value);
+  EXPECT_EQ(PV_OK,       status);
+  EXPECT_EQ(RESET_VALUE, read_value);
+
+  status = pv_registerRead(REGID_NEO_OM_FP_MISC_PROV_VLAN_CONFIG_2,
+                           0,
+                           0,
+                           &read_value);
+  EXPECT_EQ(PV_OK,       status);
+  EXPECT_EQ(RESET_VALUE, read_value);
+
+  status = pv_registerRead(REGID_NEO_OM_FP_MISC_PROV_VLAN_CONFIG_3,
+                           0,
+                           0,
+                           &read_value);
+  EXPECT_EQ(PV_OK,       status);
+  EXPECT_EQ(RESET_VALUE, read_value);
+
+  // --Test Remote VLAN Mirroring Registers initialization--
+  status = pv_registerRead(REGID_R2_HPP_GFR_REMOTE_MIRRORED_VLAN0,
+                           0,
+                           0,
+                           &read_value);
+  EXPECT_EQ(PV_OK,       status);
+  EXPECT_EQ(RESET_VALUE, read_value);
+
+  status = pv_registerRead(REGID_R2_HPP_GFR_REMOTE_MIRRORED_VLAN1,
+                           0,
+                           0,
+                           &read_value);
+  EXPECT_EQ(PV_OK,       status);
+  EXPECT_EQ(RESET_VALUE, read_value);
+
+  status = pv_registerRead(REGID_R2_HPP_GFR_REMOTE_MIRRORED_VLAN2,
+                           0,
+                           0,
+                           &read_value);
+  EXPECT_EQ(PV_OK,       status);
+  EXPECT_EQ(RESET_VALUE, read_value);
+
+  status = pv_registerRead(REGID_R2_HPP_GFR_REMOTE_MIRRORED_VLAN3,
+                           0,
+                           0,
+                           &read_value);
+  EXPECT_EQ(PV_OK,       status);
+  EXPECT_EQ(RESET_VALUE, read_value);
+
+
+  // ----Start for uninitialization tests----
+
+  status = pv_vlans_uninitialize(NODE_ID);
+  EXPECT_EQ(PV_OK, status);
+
+  // -- Check the port map release
+  // read the maxports value from profile file , for each
+  // entry in the table (one per port) verify is unset
+
+  // Regs check: ip_sa_sec_port_and_vlan_mode[25]
+  //             ip_flow_sec_port_and_vlan_mode[24]
+  //             ip_sa_feature_port_and_vlan_mode[23]
+  //             ip_flow_feature_port_and_vlan_mode[22]
+  for (i = 0; i < MAX_MATRIX_PORTS_PER_NODE; i++) {
+    status = pv_registerRead(REGID_NEO_HPP_PORT_OFFSET_2,
+                             0,
+                             i,
+                             &read_value);
+    EXPECT_EQ(0,  status);
+    read_value = read_value & 0x03C00000;
+    EXPECT_EQ(0U, read_value);
+  }
+
+  // --Test MAC/Subnet Based VLANs Table uninitialization--
+  // Check if MBV TCAM enable is not set
+  status = pv_registerRead(REGID_R2_HPP_MBV_VRF_TCAM_ENABLE,
+                           0,
+                           0,
+                           &read_value);
+
+  read_value = VALUE_OF_FIELD(&read_value,
+                              FIELDID_HPP_MBV_VRF_TCAM_EN_MBV_TCAM_ENABLE);
+
+  hpp_mbv_tcam_en_mbv_tcam_enable = 0;
+  EXPECT_EQ(hpp_mbv_tcam_en_mbv_tcam_enable, read_value);
+
+  status = pv_registerRead(REGID_NEO_HPP_MBV_TCAM_SEARCH_DATA_WORD_0,
+                           0,
+                           0,
+                           &read_value);
+  EXPECT_EQ(PV_OK,       status);
+  EXPECT_EQ(RESET_VALUE, read_value);
+
+  status = pv_registerRead(REGID_R2_HPP_MBV_TCAM_SEARCH_DATA_WORD_1,
+                           0,
+                           0,
+                           &read_value);
+  EXPECT_EQ(PV_OK,       status);
+  EXPECT_EQ(RESET_VALUE, read_value);
+
+  status = pv_registerRead(REGID_R2_HPP_MBV_TCAM_SEARCH_DATA_WORD_2,
+                           0,
+                           0,
+                           &read_value);
+  EXPECT_EQ(PV_OK,       status);
+  EXPECT_EQ(RESET_VALUE, read_value);
+
+  status = pv_registerRead(REGID_R2_HPP_MBV_TCAM_RESULT_DATA,
+                           0,
+                           0,
+                           &read_value);
+  EXPECT_EQ(PV_OK,       status);
+  EXPECT_EQ(RESET_VALUE, read_value);
+
+  // --Test Hardware VID to VLAN Number Mapping Table uninitialization--
+  // Check values in the two registers associated with each VID
+  for (i = 0; i <= PV_MAX_VID_NUMBER; i++) {
+    status = pv_registerRead(REGID_NEO_HPP_VIDTOVLAN_NUMBER_MAPPING_TABLE,
+                             0,
+                             i,
+                             &read_value);
+    EXPECT_EQ(PV_OK,       status);
+    EXPECT_EQ(RESET_VALUE, read_value);
+
+    status = pv_physAddressRead(VID2VLAN_ENTRY_WORD_ZERO(i), &read_value);
+    EXPECT_EQ(RESET_VALUE, read_value);
+
+    // Check reg: src_vlan_num_illegal[22]
+    status = pv_physAddressRead(VID2VLAN_ENTRY_WORD_ONE(i), &read_value);
+    EXPECT_EQ(0x00400000U, read_value);
+  }
+
+  // --Test for MIST table uninitialization
+  pv_longRegisterClear(&long_reg);
+
+  for (i = 0; i < PV_MAX_VID_NUMBER; i++) {
+    status = pv_longRegisterRead(REGID_NEO_HPP_MIST_TABLE_0,
+                                 0,
+                                 i,
+                                 &long_reg,
+                                 -1);
+    EXPECT_EQ(PV_OK, status);
+
+    for (uint8_t x = 0; x < 4; x++) {
+      EXPECT_EQ(0U, long_reg.words[x]);
+    }
+  }
+
+  // --Checks for OM vlan ram tagging registers--
+  // set value to compare  reset value as seen in OM documentation
+  // start at a random VID
+  rnd_start = (pvtest_rand.get_rnd() % 10) + 1;
+
+  // Increment increased, only 10% of VID checked in each run
+  for (i = rnd_start; i < MAX_MATRIX_VLAN_NUMBER; i += 10) {
+    for (int portx = 0; portx <= OM_FP_PORTS_CHIPS; portx++) {
+      // calculate register address
+      uint32_t reg_address = chip_port_to_fp_group(i, portx);
+      status = pv_physAddressRead(reg_address,
+                                  &read_value);
+
+      // Apply mask to get  and compare results
+      read_value = read_value & 0x00003000;
+      EXPECT_EQ(PV_OK, status);
+      EXPECT_EQ(0U,    read_value);
+    }
+  }
+
+  // check registers in OM for user vlan tag configurations are left clean
+  // Read each register and compare to expected value of 0
+  status = pv_registerRead(REGID_NEO_OM_FP_MISC_USER_VLAN_CONFIG_0,
+                           0,
+                           0,
+                           &read_value);
+  EXPECT_EQ(RESET_VALUE, read_value);
+
+  status = pv_registerRead(REGID_NEO_OM_FP_MISC_USER_VLAN_CONFIG_1,
+                           0,
+                           0,
+                           &read_value);
+  EXPECT_EQ(RESET_VALUE, read_value);
+
+  status = pv_registerRead(REGID_NEO_OM_FP_MISC_USER_VLAN_CONFIG_2,
+                           0,
+                           0,
+                           &read_value);
+  EXPECT_EQ(RESET_VALUE, read_value);
+
+  status = pv_registerRead(REGID_NEO_OM_FP_MISC_USER_VLAN_CONFIG_3,
+                           0,
+                           0,
+                           &read_value);
+  EXPECT_EQ(RESET_VALUE, read_value);
+
+  // check registers in OM for provider vlan tag configurations are left clean
+  // Read each register and compare to expected value of 0
+  status = pv_registerRead(REGID_NEO_OM_FP_MISC_PROV_VLAN_CONFIG_0,
+                           0,
+                           0,
+                           &read_value);
+  EXPECT_EQ(RESET_VALUE, read_value);
+
+  status = pv_registerRead(REGID_NEO_OM_FP_MISC_PROV_VLAN_CONFIG_1,
+                           0,
+                           0,
+                           &read_value);
+  EXPECT_EQ(RESET_VALUE, read_value);
+
+  status = pv_registerRead(REGID_NEO_OM_FP_MISC_PROV_VLAN_CONFIG_2,
+                           0,
+                           0,
+                           &read_value);
+  EXPECT_EQ(RESET_VALUE, read_value);
+
+  status = pv_registerRead(REGID_NEO_OM_FP_MISC_PROV_VLAN_CONFIG_3,
+                           0,
+                           0,
+                           &read_value);
+  EXPECT_EQ(RESET_VALUE, read_value);
+
+  // --checks for VID remap--
+  // test that register with enable ports mapping are left clean
+  for (i = 0; i < OM_VID_REMAP_RAM_ENTRIES; i++) {
+    for (base_addr = 0; base_addr < 4; base_addr++) {
+      status = pv_physAddressRead(
+        R2_OM_R4CR2_VLAN_RAM_FP_GRPX_PHYS_BASE_ADDRESS[base_addr][0] +
+        (i << 2),
+        &read_value);
+
+      // Check reg: remapped_vid[11:0]
+      read_value = read_value & 0x00000FFF;
+      EXPECT_EQ(PV_OK, status);
+      EXPECT_EQ(0U,    read_value);
+    }
+  }
+
+  // Check regs: parity[8]
+  //             remapped_prov_dei[7]
+  //             remapped_user_dei[6]
+  //             remapped_prov_cos[5:3]
+  //             remapped_user_cos[2:0]
+  for (i = 0; i < OM_COS_REMAP_RAM_ENTRIES; i++) {
+    for (base_addr = 0; base_addr < 4; base_addr++) {
+      status = pv_physAddressRead(
+        R2_OM_MBM_RD_ARB_COS_REMAP_RAM_FP_GRPX_PHYS_BASE_ADDRESS[base_addr][0] +
+        (i << 2),
+        &read_value);
+      EXPECT_EQ(PV_OK,  status);
+      EXPECT_EQ(0x100U, read_value);
+    }
+  }
+
+  // --Test Remote VLAN mirroring configuration release--
+  // Test that remote mirrored registers for VLAN0,VLAN1,VLAN2,VLAN3 are clean
+  // Read each register and compare to expected value of 0
+  status = pv_registerRead(REGID_R2_HPP_GFR_REMOTE_MIRRORED_VLAN0,
+                           0,
+                           0,
+                           &read_value);
+  EXPECT_EQ(PV_OK,       status);
+  EXPECT_EQ(RESET_VALUE, read_value);
+
+  status = pv_registerRead(REGID_R2_HPP_GFR_REMOTE_MIRRORED_VLAN1,
+                           0,
+                           0,
+                           &read_value);
+  EXPECT_EQ(PV_OK,       status);
+  EXPECT_EQ(RESET_VALUE, read_value);
+
+  status = pv_registerRead(REGID_R2_HPP_GFR_REMOTE_MIRRORED_VLAN2,
+                           0,
+                           0,
+                           &read_value);
+  EXPECT_EQ(PV_OK,       status);
+  EXPECT_EQ(RESET_VALUE, read_value);
+
+  status = pv_registerRead(REGID_R2_HPP_GFR_REMOTE_MIRRORED_VLAN3,
+                           0,
+                           0,
+                           &read_value);
+  EXPECT_EQ(PV_OK,       status);
+  EXPECT_EQ(RESET_VALUE, read_value);
+}
+
+TEST_F(pv_vlans_matrix, init_uninit_vlans) {
+  int status              = 0;
+  uint32_t i              = 0;
+  uint32_t rnd_iterations = 0;
+  uint32_t read_value     = 0;
+
+  // TEST: software init and unit
+  // 1. The feature was not initialized for this node
+  // 2. Initialize feature
+  // 3. Test VID to VLAN Number Mapping Table initialization
+  // 4. Initialize feature a random number of times
+  // 5. Uninitialize feature a random number of times
+
+  status = pv_vlans_uninitialize(NODE_ID);
+  EXPECT_EQ(PV_FEATURE_NOT_INITIALIZED, status);
+
+  status = pv_vlans_initialize(NODE_ID);
+  EXPECT_EQ(PV_OK,                      status);
+
+  // loop to check vlans value given a VID, this cycle includes values outside
+  // of range
+  for (i = 0; i <= PV_MAX_VID_NUMBER; i++) {
+    status =
+      pv_vlans_vid_to_vlan_get(NODE_ID, i, &read_value);
+    if ((i > PV_MAX_VID_NUMBER) || (i <= 0)) {
+      // incorrect VID will throw error
+      EXPECT_EQ(PV_INVALID_VLAN, status);
+    } else {
+      EXPECT_EQ(0,          status);
+
+      // compare result to value control representing VLAN0
+      EXPECT_EQ(read_value, RESET_VALUE);
+    }
+  }
+
+  rnd_iterations = (pvtest_rand.get_rnd() % 10) + 1;
+
+  for (i = 0; i < rnd_iterations; i++) {
+    status = pv_vlans_initialize(NODE_ID);
+    EXPECT_EQ(PV_FEATURE_ALREADY_INITIALIZED, status);
+  }
+
+  rnd_iterations = (pvtest_rand.get_rnd() % 10) + 1;
+
+  for (i = 0; i < rnd_iterations; i++) {
+    status = pv_vlans_uninitialize(NODE_ID);
+    if (0 == i) {
+      EXPECT_EQ(PV_OK, status);
+    } else {
+      EXPECT_EQ(PV_FEATURE_NOT_INITIALIZED, status);
+    }
+  }
+
+  // --Test Software VID to VLAN Number Mapping Table uninitialization--
+  // loop to check vlans value given a VID, this cycle includes values outside
+  // of range
+  for (i = 0; i <= PV_MAX_VID_NUMBER; i++) {
+    status = pv_vlans_vid_to_vlan_get(NODE_ID, i, &read_value);
+    EXPECT_EQ(PV_FEATURE_NOT_INITIALIZED, status);
+  }
+}
+
+TEST_F(pv_vlans_matrix, create_remove_vlans) {
+  int status           = 0;
+  uint32_t vlan_number = 0;
+  uint32_t max_vlans   = 0;
+  uint32_t vlan_0      = 0;
+  uint32_t i           = 0;
+  bool     vlan_exists = false;
+
+
+  // TEST: Create a VLAN without having initialized the VLANS FLI
+  vlan_number = pvtest_rand.get_rnd_min_max(1, MAX_MATRIX_VLAN_NUMBER - 2);
+  status      = pv_vlans_vlan_create(NODE_ID, vlan_number);
+  EXPECT_EQ(PV_FEATURE_NOT_INITIALIZED, status);
+
+  // Initialize the VLANS FLI
+  status = pv_vlans_initialize(NODE_ID);
+  ASSERT_EQ(PV_OK, status);
+
+  // TEST: Create software resources for VLANs feature
+  // 1. Pass NULL pointer as parameter
+  // 2. Try to get max number of VLANs and check if it's correct
+  // 3. Try to add out-of-range VLAN
+  // 4. Populate the entire array of structures with VLANs
+  // 5. Pass NULL pointer as parameter
+  // 6. Create a VLAN that already exists
+  // 7. Check if newly created VLANs exist
+  // 8. Try to uninitialize the VLANs feature with existing VLANS
+  // 9. Remove 1 VLAN, try out-of-range VLANs
+  // 10. Try to remove the same VLAN again, verify no other VLANs were removed
+  // 11. Remove all VLANs
+  // 12. Try to remove (again) the VLAN, to fail
+  // 13. Check if VLANs exist after complete removal
+
+  status = pv_vlans_max_number_of_vlans_get(NODE_ID, NULL);
+  EXPECT_EQ(PV_PARM,                status);
+
+  status = pv_vlans_max_number_of_vlans_get(NODE_ID, &max_vlans);
+  EXPECT_EQ(PV_OK,                  status);
+  EXPECT_EQ(MAX_MATRIX_VLAN_NUMBER, (signed)max_vlans);
+
+  status = pv_vlans_vlan_create(NODE_ID, max_vlans);
+  EXPECT_EQ(PV_OUT_OF_RANGE,        status);
+
+  status = pv_vlans_vlan_create(NODE_ID, vlan_0);
+  EXPECT_EQ(PV_OUT_OF_RANGE,        status);
+
+  for (i = 1; i < MAX_MATRIX_VLAN_NUMBER; i++) {
+    status = pv_vlans_vlan_create(NODE_ID, i);
+    EXPECT_EQ(PV_OK, status);
+  }
+
+  status = pv_vlans_vlan_exists(NODE_ID, max_vlans, NULL);
+  EXPECT_EQ(PV_PARM, status);
+
+  vlan_number = pvtest_rand.get_rnd_min_max(0, MAX_MATRIX_VLAN_NUMBER - 1);
+  status      = pv_vlans_vlan_create(NODE_ID, vlan_number);
+  EXPECT_EQ(PV_EXISTS, status);
+
+  for (i = 1; i < MAX_MATRIX_VLAN_NUMBER; i++) {
+    status = pv_vlans_vlan_exists(NODE_ID, i, &vlan_exists);
+    EXPECT_EQ(PV_OK, status);
+    EXPECT_TRUE(vlan_exists);
+  }
+
+  status = pv_vlans_uninitialize(NODE_ID);
+  ASSERT_EQ(PV_BUSY, status);
+
+  status = pv_vlans_vlan_remove(NODE_ID, max_vlans);
+  EXPECT_EQ(PV_OUT_OF_RANGE, status);
+
+  status = pv_vlans_vlan_remove(NODE_ID, vlan_0);
+  EXPECT_EQ(PV_NO_RESOURCE,  status);
+
+  vlan_number = pvtest_rand.get_rnd_min_max(0, MAX_MATRIX_VLAN_NUMBER - 1);
+  status      = pv_vlans_vlan_remove(NODE_ID, vlan_number);
+  EXPECT_EQ(PV_OK, status);
+
+  for (i = 1; i < MAX_MATRIX_VLAN_NUMBER; i++) {
+    status = pv_vlans_vlan_remove(NODE_ID, i);
+    if (vlan_number == i) {
+      EXPECT_EQ(PV_NO_RESOURCE, status);
+    } else {
+      EXPECT_EQ(PV_OK, status);
+    }
+  }
+
+  vlan_number = pvtest_rand.get_rnd_min_max(0, MAX_MATRIX_VLAN_NUMBER - 1);
+  status      = pv_vlans_vlan_remove(NODE_ID, vlan_number);
+  EXPECT_EQ(PV_NO_RESOURCE, status);
+
+  for (i = 0; i < MAX_MATRIX_VLAN_NUMBER; i++) {
+    status = pv_vlans_vlan_exists(NODE_ID, i, &vlan_exists);
+    EXPECT_EQ(PV_OK, status);
+    EXPECT_FALSE(vlan_exists);
+  }
+
+  // Uninit the vlans driver
+  status = pv_vlans_uninitialize(NODE_ID);
+  ASSERT_EQ(PV_OK, status);
+}
+
+TEST_F(pv_vlans_matrix, set_get_vid_vlan) {
+  int status           = 0;
+  uint32_t vlan_number = 0;
+  uint32_t max_vlans   = 0;
+  uint32_t vlan_0      = 0;
+  uint32_t vid         = 0;
+  uint32_t vid_0       = 0;
+  uint32_t read_value  = 0;
+
+  // Add VID without initializing VLANs FLI
+  status = pv_vlans_vid_to_vlan_set(NODE_ID, vid, vlan_number);
+  EXPECT_EQ(PV_FEATURE_NOT_INITIALIZED, status);
+
+  // Initialize the VLANS FLI
+  status = pv_vlans_initialize(NODE_ID);
+  ASSERT_EQ(PV_OK, status);
+
+  // Get max number of VLANs
+  status = pv_vlans_max_number_of_vlans_get(NODE_ID, &max_vlans);
+  EXPECT_EQ(PV_OK, status);
+
+  // Set random valid numbers to VLAN Number and VID variables
+  vlan_number = pvtest_rand.get_rnd_min_max(1, MAX_MATRIX_VLAN_NUMBER - 1);
+  vid         = pvtest_rand.get_rnd_min_max(1, PV_MAX_VID_NUMBER - 1);
+
+  // Create VLAN
+  status = pv_vlans_vlan_create(NODE_ID, vlan_number);
+  EXPECT_EQ(PV_OK, status);
+
+  // Try to add an invalid VID number
+  status = pv_vlans_vid_to_vlan_set(NODE_ID, PV_MAX_VID_NUMBER + 1, vlan_number);
+  EXPECT_EQ(PV_OUT_OF_RANGE, status);
+
+  // Try to add an invalid VID number
+  status = pv_vlans_vid_to_vlan_set(NODE_ID, vid_0, vlan_number);
+  EXPECT_EQ(PV_INVALID_VLAN, status);
+
+  // Try to add a VID to an invalid VLAN number
+  status = pv_vlans_vid_to_vlan_set(NODE_ID, vid, max_vlans + 1);
+  EXPECT_EQ(PV_OUT_OF_RANGE, status);
+
+  // Try to add a VID to an invalid VLAN number
+  status = pv_vlans_vid_to_vlan_set(NODE_ID, vid, vlan_0);
+  EXPECT_EQ(PV_PARM, status);
+
+  // Add correct VID to VLAN
+  status = pv_vlans_vid_to_vlan_set(NODE_ID, vid, vlan_number);
+  EXPECT_EQ(PV_OK, status);
+
+  // Try to get a VLAN number from an invalid VID number
+  status = pv_vlans_vid_to_vlan_get(NODE_ID,
+                                    PV_MAX_VID_NUMBER + 1,
+                                    &read_value);
+  EXPECT_EQ(PV_OUT_OF_RANGE, status);
+
+  // Try to get a VLAN number from an invalid VID number
+  status = pv_vlans_vid_to_vlan_get(NODE_ID, vid_0, &read_value);
+  EXPECT_EQ(PV_INVALID_VLAN, status);
+
+  // Try to get a VLAN number with a NULL pointer
+  status = pv_vlans_vid_to_vlan_get(NODE_ID, vid, NULL);
+  EXPECT_EQ(PV_PARM, status);
+
+  // Get correct VLAN from VID
+  status = pv_vlans_vid_to_vlan_get(NODE_ID, vid, &read_value);
+  EXPECT_EQ(PV_OK, status);
+
+  // Check returned VLAN is the same associated before
+  EXPECT_TRUE(vlan_number == read_value);
+
+  // Remove VLAN
+  status = pv_vlans_vlan_remove(NODE_ID, vlan_number);
+  EXPECT_EQ(PV_OK, status);
+
+  // Uninit the vlans driver
+  status = pv_vlans_uninitialize(NODE_ID);
+  ASSERT_EQ(PV_OK, status);
+}
+
+
+TEST_F(pv_vlans_matrix, port_vid_set_get)
+{
+  int result                   = 0;
+  uint32_t vlan_id             = pvtest_rand.get_rnd() % PV_MAX_VID_NUMBER;
+  uint32_t another_vlan_id     = pvtest_rand.get_rnd() % PV_MAX_VID_NUMBER;
+  uint32_t vid                 = 0;
+  uint32_t port_number         = pvtest_rand.get_rnd() % MAX_PORT_TEST;
+  uint32_t another_port_number = pvtest_rand.get_rnd() % MAX_PORT_TEST;
+  struct pv_vport phys_vport, another_phys_vport, wrong_vport, bitmap;
+
+  // Create a non phys port
+  result = pv_vports_lag_init(0, &wrong_vport);
+  EXPECT_EQ(PV_OK, result);
+
+  // Create a phys port
+  result =
+    pv_vports_phys_port_init(CHASSIS_ID, NODE_ID, port_number, &phys_vport);
+  EXPECT_EQ(PV_OK, result);
+
+  // Initialize the VLANS FLI
+  result = pv_vlans_initialize(NODE_ID);
+  EXPECT_EQ(PV_OK, result);
+
+  ///Test invalid parameters for vid_set and vid_get
+
+  // Use a NULL vid
+  result = pv_vlans_port_default_vid_get(NODE_ID, phys_vport, NULL);
+  EXPECT_EQ(PV_PARM, result);
+
+  // Set the default VID of a vport that is not a phys/bitmap
+  result = pv_vlans_port_default_vid_set(NODE_ID, vlan_id, wrong_vport);
+  EXPECT_EQ(PV_INVALID_PORT, result);
+
+
+  // Set the default VID of a vport with a different node ID
+  result = pv_vlans_port_default_vid_set(NODE_ID + 1, vlan_id, wrong_vport);
+  EXPECT_EQ(PV_NOT_ATTACHED, result);
+
+  // Test setting a VID to a phys port
+
+  // Set the default VID of a phys port
+  result = pv_vlans_port_default_vid_set(NODE_ID, vlan_id, phys_vport);
+  EXPECT_EQ(PV_OK, result);
+
+  // Get the default VID of the port
+  result = pv_vlans_port_default_vid_get(NODE_ID, phys_vport, &vid);
+  EXPECT_EQ(PV_OK, result);
+
+  // Compare the VIDs and check they are equal
+  EXPECT_EQ(vid,   vlan_id);
+
+  // Test setting a VID to a bitmap
+
+  // Create a bitmap
+  result = pv_vports_bitmap_init(CHASSIS_ID, NODE_ID, &bitmap);
+  EXPECT_EQ(PV_OK, result);
+
+  // Add the phys port to the bitmap
+  result = pv_vports_bitmap_vport_add(phys_vport, &bitmap);
+  EXPECT_EQ(PV_OK, result);
+
+  while (another_port_number == port_number)
+  {
+    another_port_number = pvtest_rand.get_rnd() % MAX_PORT_TEST;
+  }
+
+  // Create another phys_port
+  result = pv_vports_phys_port_init(CHASSIS_ID,
+                                    NODE_ID,
+                                    another_port_number,
+                                    &another_phys_vport);
+  EXPECT_EQ(PV_OK, result);
+
+  // Add the phys_port to the bitmap
+  result = pv_vports_bitmap_vport_add(another_phys_vport, &bitmap);
+  EXPECT_EQ(PV_OK, result);
+
+  // Set a VID for both ports
+
+  // Set the default VID of the bitmap
+  result = pv_vlans_port_default_vid_set(NODE_ID, another_vlan_id, bitmap);
+  EXPECT_EQ(PV_OK, result);
+
+  // Get the default VID of both ports
+  result = pv_vlans_port_default_vid_get(NODE_ID, phys_vport, &vid);
+  EXPECT_EQ(PV_OK, result);
+
+  // Compare the VIDs and check they are equal
+  EXPECT_EQ(vid,   another_vlan_id);
+
+  // Remove the default VID of a port
+
+  // Remove port's VID (set it to 0)
+  result = pv_vlans_port_default_vid_set(NODE_ID, 0, bitmap);
+  EXPECT_EQ(PV_OK, result);
+
+  // Get the default vid from the port where vid has been removed
+  result = pv_vlans_port_default_vid_get(NODE_ID, phys_vport, &vid);
+  EXPECT_EQ(PV_INVALID_CONFIG, result);
+
+  result = pv_vlans_uninitialize(NODE_ID);
+  EXPECT_EQ(PV_OK,             result);
+}
+
+/*
+ * Test setting/getting protocol VID of a port
+ */
+TEST_F(pv_vlans_matrix, protocol_vid_set_get)
+{
+  int result                   = 0;
+  uint32_t vlan_id             = pvtest_rand.get_rnd() % PV_MAX_VID_NUMBER;
+  uint32_t another_vlan_id     = pvtest_rand.get_rnd() % PV_MAX_VID_NUMBER;
+  uint32_t vid                 = 0;
+  uint32_t port_number         = pvtest_rand.get_rnd() % MAX_PORT_TEST;
+  uint32_t another_port_number = pvtest_rand.get_rnd() % MAX_PORT_TEST;
+  uint16_t protocol            = pvtest_rand.get_rnd() % MAX_ETHER_TYPE;
+  struct pv_vport phys_vport, wrong_vport, another_phys_vport, bitmap;
+
+  // Use a NULL vid
+  result = pv_vlans_protocol_vid_get(NODE_ID,
+                                     protocol,
+                                     phys_vport,
+                                     NULL);
+  EXPECT_EQ(PV_PARM, result);
+
+  // Create a non phys port
+  result = pv_vports_lag_init(0, &wrong_vport);
+  EXPECT_EQ(PV_OK, result);
+
+  // Create a phys port
+  result =
+    pv_vports_phys_port_init(CHASSIS_ID, NODE_ID, port_number, &phys_vport);
+  EXPECT_EQ(PV_OK, result);
+
+  // Create a bitmap
+  result = pv_vports_bitmap_init(CHASSIS_ID, NODE_ID, &bitmap);
+  EXPECT_EQ(PV_OK, result);
+
+  // Calling default vid set/get without having initialized VLANS feature
+  result = pv_vlans_protocol_vid_get(NODE_ID,
+                                     protocol,
+                                     phys_vport,
+                                     &vid);
+  EXPECT_EQ(PV_FEATURE_NOT_INITIALIZED, result);
+
+  // Calling deafult vid set/get without having initialized VLANS feature
+  result = pv_vlans_protocol_vid_set(NODE_ID,
+                                     vlan_id,
+                                     protocol,
+                                     phys_vport);
+  EXPECT_EQ(PV_FEATURE_NOT_INITIALIZED, result);
+
+
+  // Initialize the VLANS FLI
+  result = pv_vlans_initialize(NODE_ID);
+  EXPECT_EQ(PV_OK, result);
+
+  ///Test invalid parameters for vid_set and vid_get
+
+
+  // Set the default VID of a vport that is not a phys/bitmap
+  result = pv_vlans_protocol_vid_set(NODE_ID,
+                                     vlan_id,
+                                     protocol,
+                                     wrong_vport);
+  EXPECT_EQ(PV_INVALID_PORT, result);
+
+  // Get the default VID of a port that doesn't have a default VID
+  result = pv_vlans_protocol_vid_get(NODE_ID,
+                                     protocol,
+                                     phys_vport,
+                                     &vid);
+  EXPECT_EQ(PV_FEATURE_UNAVAILABLE, result);
+
+  // Set a protocol VID of a vport with a different node ID
+  result = pv_vlans_protocol_vid_set(NODE_ID + 1,
+                                     vlan_id,
+                                     protocol,
+                                     phys_vport);
+  EXPECT_EQ(PV_NOT_ATTACHED, result);
+
+  // Get a protocol VID of a vport with a different node ID
+  result = pv_vlans_protocol_vid_get(NODE_ID + 1,
+                                     protocol,
+                                     phys_vport,
+                                     &vid);
+  EXPECT_EQ(PV_NOT_ATTACHED, result);
+
+  // Test setting a VID to a phys port for a particular protocol
+
+
+  // Set the default VID of the port
+  result = pv_vlans_protocol_vid_set(NODE_ID,
+                                     vlan_id,
+                                     protocol,
+                                     phys_vport);
+  EXPECT_EQ(PV_FEATURE_UNAVAILABLE, result);
+
+  // Get the default VID of the port
+  result = pv_vlans_protocol_vid_get(NODE_ID,
+                                     protocol,
+                                     phys_vport,
+                                     &vid);
+  EXPECT_EQ(PV_FEATURE_UNAVAILABLE, result);
+
+  // Compare the VIDs and check they are equal
+  EXPECT_EQ(vid,                    vlan_id);
+
+  // Test setting a VID to a bitmap
+
+  // Add the phys port to the bitmap
+  result = pv_vports_bitmap_vport_add(phys_vport, &bitmap);
+  EXPECT_EQ(PV_OK, result);
+
+  while (another_port_number == port_number)
+  {
+    another_port_number = pvtest_rand.get_rnd() % MAX_PORT_TEST;
+  }
+
+  // Create another phys_port
+  result = pv_vports_phys_port_init(CHASSIS_ID,
+                                    NODE_ID,
+                                    another_port_number,
+                                    &another_phys_vport);
+  EXPECT_EQ(PV_OK, result);
+
+  // Add the phys_port to the bitmap
+  result = pv_vports_bitmap_vport_add(another_phys_vport, &bitmap);
+  EXPECT_EQ(PV_OK, result);
+
+  // Set a VID for both ports
+
+  // Set the default VID of the bitmap
+  result = pv_vlans_protocol_vid_set(NODE_ID,
+                                     another_vlan_id,
+                                     protocol,
+                                     bitmap);
+  EXPECT_EQ(PV_FEATURE_UNAVAILABLE, result);
+
+  // Get the default VID of both ports
+  result = pv_vlans_protocol_vid_get(NODE_ID,
+                                     protocol,
+                                     phys_vport,
+                                     &vid);
+  EXPECT_EQ(PV_FEATURE_UNAVAILABLE, result);
+
+  // Compare the VIDs and check they are equal
+  EXPECT_EQ(vid,                    another_vlan_id);
+
+  result = pv_vlans_protocol_vid_get(NODE_ID,
+                                     protocol,
+                                     another_phys_vport,
+                                     &vid);
+  EXPECT_EQ(PV_FEATURE_UNAVAILABLE, result);
+
+  // Compare the VIDs and check they are equal
+  EXPECT_EQ(vid,                    another_vlan_id);
+
+  // Remove the default VID of a port
+
+  // Wrong param
+  result = pv_vlans_protocol_vid_set(NODE_ID, 0, protocol, wrong_vport);
+  EXPECT_EQ(PV_INVALID_PORT,        result);
+
+  result = pv_vlans_protocol_vid_set(NODE_ID, 0, protocol, bitmap);
+  EXPECT_EQ(PV_FEATURE_UNAVAILABLE, result);
+
+  // Get the default VID of the port removed
+  result = pv_vlans_protocol_vid_get(NODE_ID,
+                                     protocol,
+                                     phys_vport,
+                                     &vid);
+  EXPECT_EQ(PV_FEATURE_UNAVAILABLE, result);
+
+  result = pv_vlans_uninitialize(NODE_ID);
+  EXPECT_EQ(PV_OK,                  result);
+}
+

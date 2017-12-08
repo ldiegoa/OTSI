@@ -1,0 +1,456 @@
+typedef uint16_t SLOT_PORT_t;
+
+
+
+/*****************************************************************************
+  * Name: hw_MACSpeedGet
+  *
+  * callable from ISR: Yes 
+  *
+  * Purpose: get mac speed
+  *
+  * Params:    slotPort - slot port
+  *
+  * Returns:   HW_MAC_SPEED_t
+  *
+  * Globals:   none
+  *
+  * Constraints:
+  *
+  ******************************************************************* 1102 ****/
+ HW_MAC_SPEED_t hw_MACSpeedGet ( SLOT_PORT_t slotPort )
+ {
+     CHIP_PORT_t chipPort = hw_slotPort_to_chipPort(slotPort);
+     uint32_t macMipMiscConfigRegData;
+     uint32_t speed = 0x0;/* Default 10M */
+ 
+     if( chipPort == 0 )
+     {
+        ASSERT(0);
+     }
+     else
+     {
+        asicMipmiscReadReg32(thisCpu, NG_MIPMISC_MAC_CONFIG, chipPort,
+                                           &macMipMiscConfigRegData);
+        asicGetFieldFromData(thisCpu, NG_MIPMISC_MAC_CONFIG, MAC_MAC_SPEED_s2MAC,
+                              &speed, macMipMiscConfigRegData);
+     }
+     return (HW_MAC_SPEED_t)speed;
+ }
+ /*****************************************************************************
+  * Name: hw_isFlowControlEnabled
+  *
+  * callable from ISR:  No
+  *
+  * Purpose: return whether flow control is enabled on the port
+  *
+  * Params:  PPORT_t port
+  *
+  * Returns:  enabled bits of the port's flwoControl register 
+  *
+  * Globals:   none
+  *
+  * Constraints:
+  *
+  ******************************************************************* 1102 ****/
+ uint32_t hw_isFlowControlEnabled(PPORT_t port)
+ {   
+     uint32_t portConfig;
+     uint32_t IsTxFCEnabled = 1;
+     uint32_t IsRxFCEnabled = 1;
+     uint32_t txfcEnableSubField;
+     uint32_t rxfcEnableSubField;
+     REG_DEFS_t reg;
+     
+     if ( asicTypeofPport ( port ) == BTTF_GIG_PORT )
+     {
+         reg = NG_MAC_PORT_CONFIG;
+         txfcEnableSubField = NG_TX_FC_ENABLE;
+         rxfcEnableSubField = NG_RX_FC_ENABLE;
+     }
+     else if ( asicTypeofPport ( port ) == BTTF_XG_PORT )
+     {
+         reg = NGX_MAC_PORT_CONFIG;
+         txfcEnableSubField = NGX_TX_FC_ENABLE;
+         rxfcEnableSubField = NGX_RX_FC_ENABLE;
+     }
+     else if ( asicTypeofPport ( port ) == BTTF_40GIG_PORT )
+     {
+         reg = NEO_MAC_40G_FLOW_CONTROL_CONFIG;
+         txfcEnableSubField = CONFIG_TX_FC_ENABLE;
+         rxfcEnableSubField = CONFIG_RX_FC_ENABLE;
+     }
+     else
+     {
+        /* sanity check */
+        ASSERT(0);
+        return 0;
+     }
+ 
+     portConfig = asicReadPportMacReg ( reg, port );
+ 
+     asicGetFieldFromData ( 0, reg, rxfcEnableSubField, &IsRxFCEnabled, portConfig );
+     asicGetFieldFromData ( 0, reg, txfcEnableSubField, &IsTxFCEnabled, portConfig );
+ 
+     return (IsRxFCEnabled | IsTxFCEnabled);
+ }
+ 
+/*****************************************************************************
+ * Name: checkPortEnabled
+ *
+ * callable from ISR:  No
+ *
+ * Purpose: Detect if port is enabled or not
+ *
+ * Params:
+ *        PPORT_t port
+ * Returns:   yes or no
+ *
+ * Globals:   none
+ *
+ * Constraints:
+ *
+ ******************************************************************* 1102 ****/
+boolean checkPortEnabled ( PPORT_t port )
+{
+    uint32_t portConfig;
+    uint32_t IsTxEnabled = 0;
+    uint32_t IsRxEnabled = 0;
+    uint32_t IsInReset;
+   
+    uint32_t macMipMiscConfigRegData;
+    CHIP_PORT_t chipPort = hw_port_to_chipPort ( port );
+
+    asicMipmiscReadReg32(thisCpu, NG_MIPMISC_MAC_CONFIG, chipPort, 
+                                         &macMipMiscConfigRegData);
+    asicGetFieldFromData ( 0, NG_MIPMISC_MAC_CONFIG, MAC_MAC_RESET_L,
+                               &IsInReset, macMipMiscConfigRegData );
+
+     if ( IsInReset == 0 )
+     {
+     /*
+      * a port in reset is obviously not enabled 
+      */
+         return ( FALSE );
+     }
+
+   if (asicTypeofPport(port)== BTTF_GIG_PORT)        //everything else            
+   {         
+      portConfig = asicReadPportMacReg ( NG_MAC_PORT_CONFIG, port );
+      asicGetFieldFromData ( 0, NG_MAC_PORT_CONFIG, NG_TX_MAC_ENABLE, &IsTxEnabled,
+                           portConfig );
+      asicGetFieldFromData ( 0, NG_MAC_PORT_CONFIG, NG_RX_MAC_ENABLE, &IsRxEnabled,
+                           portConfig );
+                                                            
+
+   }
+   else if (asicTypeofPport(port)== BTTF_XG_PORT)   //MAC_SPEED_10000 == macSpeed                 
+   {       
+       portConfig = asicReadPportMacReg ( NGX_MAC_PORT_CONFIG, port );
+       asicGetFieldFromData ( 0, NGX_MAC_PORT_CONFIG, NGX_TX_MAC_ENABLE, &IsTxEnabled,
+                           portConfig );
+       asicGetFieldFromData ( 0, NGX_MAC_PORT_CONFIG, NGX_RX_MAC_ENABLE, &IsRxEnabled,
+                           portConfig );
+                                                              
+   }
+   else if (asicTypeofPport(port)== BTTF_40GIG_PORT)   //MAC_SPEED_40000 == macSpeed                 
+   {       
+       portConfig = asicReadPportMacReg ( NEO_MAC_40G_PORT_RESET, port );
+       asicGetFieldFromData ( 0, NEO_MAC_40G_PORT_RESET, RESET_MAC_TX_EN, &IsTxEnabled,
+                           portConfig );
+       asicGetFieldFromData ( 0, NEO_MAC_40G_PORT_RESET, RESET_MAC_RX_EN, &IsRxEnabled,
+                           portConfig );
+   }
+   else                                                              
+      ASSERT(0);                                                     
+
+    return ( IsTxEnabled || IsRxEnabled );
+}
+
+/*****************************************************************************
+ * Name: asicTypeofSlotPort
+ *
+ * callable from ISR: Yes 
+ *
+ * Purpose: is this slot port NG or NGX type?
+ *
+ * Params:    SLOT_PORT_t slotPort
+ *
+ * Returns:   BTTF_XG_PORT or BTTF_40GIG_PORT or BTTF_GIG_PORT
+ *
+ * Globals:   none
+ *
+ * Constraints: none 
+ *
+ ******************************************************************* 1102 ****/
+uint32_t asicTypeofSlotPort ( SLOT_PORT_t slotPort )
+{
+   HW_MAC_SPEED_t macSpeed;
+
+   macSpeed =  hw_MACSpeedGet (slotPort);
+
+   if (MAC_SPEED_10000 == macSpeed)
+   {
+      return BTTF_XG_PORT;
+   }
+   else if (MAC_SPEED_40000 == macSpeed)
+   {
+      return BTTF_40GIG_PORT;
+   }
+   else
+   {
+      return BTTF_GIG_PORT;
+   }
+}
+
+/************************************************************************
+ * Name:      asicGetFieldFromData
+ *
+ * callable from ISR:  YES.
+ *
+ * Purpose:   Does not access hardware. Extracts the field value from the given
+ *                  32-bit value
+ * Params:    REG_DEFS_t reg : a register number as defined by the REG_DEFS_t
+ *                                                  enumeration.
+ *                  int subfield: subfield index to be extracted
+ *                  uint32_t  *fieldvalue: bit-field value to be read from data
+ *                  uint32_t data: a 32-bit memory to be read
+ * Returns:   0  -- for access with no error
+ *                 < 0 - access error.
+ * Globals:   None
+ *
+ * Note :
+ *
+************************************************************************/
+int asicGetFieldFromData(int chip,REG_DEFS_t reg, int subField,
+                         uint32_t *fieldValue, uint32_t data)
+{
+   REG_SUB_FIELD_t  *regSf = NULL;
+   uint32_t            mask = ~(0x0); /*0xffffffff;*/
+
+
+   regSf =  asic_getRegSubfieldAddr(chip, reg, subField);
+
+   if (regSf == NULL)
+   {
+      ASICPRIM_ERR(chip, reg, 0, subField, data);
+      return -1;
+   }
+
+   /* create a 1's bit field mask as big as the size */
+   mask = mask >> (32 - (regSf->size));
+   /* move the mask to the right offset */
+   mask = mask << regSf->offset;
+   /* zero out the unwanted bit fields */
+   data = data & mask;
+   /* right shift to the 0 bit*/
+   data = data >> regSf->offset;
+
+   *fieldValue = data;
+
+   return 0;
+}
+
+/**PROC+**********************************************************************
+ * Name:      bsp_port_to_slotPort
+ *
+ * callable from ISR:  Yes
+ *
+ * Purpose:   Return the slot port that corresponds to the given physical 
+ *            port number
+ *
+ * Params:    port number ( 1 to bsp_ports() )
+ *
+ * Returns:   slotPort - slot port number (1 based)
+ *
+ * Globals:   none
+ *
+ * Constraints:
+ **PROC-**********************************************************************/
+SLOT_PORT_t bsp_port_to_slotPort(PPORT_t physPort)
+{
+   PPORT_t slotPort;
+
+   ASSERT_VALID_PPORT(physPort);
+
+   /* The slotPort number is the same as the 5-bit port number in the LPR
+    * (logical port register) when the LPR represents a non-trunked port.
+    * slotPort numbers are start at 1 for each slot, e.g., 4-gig cards
+    * have slotPort numbers 1..4, while 10/100 24-port cards have 1..24.
+    */
+   slotPort = ((physPort-1) % MAX_PORTS_ON_SLOT) + 1;
+   return(slotPort);
+}
+
+
+num pv_port_speed
+{
+  /** Port speed at 10 Mb/s */
+  PV_PORT_SPEED_10M = 0x1,
+
+  /** Port speed at 100 Mb/s */
+  PV_PORT_SPEED_100M = 0x2,
+
+  /** Port speed at 1 Gb/s */
+  PV_PORT_SPEED_1G = 0x4,
+
+  /** Port speed at 2.5 Gb/s */
+  PV_PORT_SPEED_2P5G = 0x8,
+
+  /** Port speed at 5 Gb/s */
+  PV_PORT_SPEED_5G = 0x10,
+
+  /** Port speed at 10 Gb/s */
+  PV_PORT_SPEED_10G = 0x20,
+
+  /** Port speed at 25 Gb/s */
+  PV_PORT_SPEED_25G = 0x40,
+
+  /** Port speed at 40 Gb/s */
+  PV_PORT_SPEED_40G = 0x80,
+
+  /** Port speed at 50 Gb/s */
+  PV_PORT_SPEED_50G = 0x100,
+
+  /** Port speed at 100 Gb/s */
+  PV_PORT_SPEED_100G = 0x200,
+
+  /** Port speed at 200 Gb/s */
+  PV_PORT_SPEED_200G = 0x400,
+
+  /** Port speed at 400 Gb/s */
+  PV_PORT_SPEED_400G = 0x800,
+
+-------------------------------------------
+
+extern HW_MAC_SPEED_t hw_MACSpeedGet ( SLOT_PORT_t slotPort ); 2570
+extern CHIP_PORT_t hw_slotPort_to_chipPort(SLOT_PORT_t slotPort);
+extern uint32_t asicTypeofSlotPort ( SLOT_PORT_t slotPort );
+
+***************************************************************************************
+
+int        asicGetFieldFromData     (int chip, REG_DEFS_t reg, int subField,
+                                     uint32_t *fieldValue, uint32_t data);
+
+
+/************************************************************************
+ * Name:      asicReadField32
+ *
+ * callable from ISR:  YES.
+ *
+ * Purpose:   Read a specific field of the register type REG, at instance index
+ *
+ * Params:    REG_DEFS_t reg : a register number as defined by the REG_DEFS_t
+ *                                                  enumeration.
+ *                  int index: the instance of the register we are interested to read
+ *                  int subfield: subfield index to be read
+ *                  uint32_t  *value: pointer to a 32-bit variable to be filled
+ *
+ * Returns:   0  -- for access with no error
+ *                 < 0 - access error.
+ *
+ * Globals:   None
+ *
+ * Note : The bit-field value is written into the given 32-bit memory address
+ *
+************************************************************************/
+int asicReadField32(int chip,REG_DEFS_t reg, int index, int subField, uint32_t *value)
+{
+    REG_SUB_FIELD_t  *regSf= NULL;
+    uintptr_t      *physAddr = NULL;
+    uint32_t      data      = 0;
+    uint32_t      mask      = ~(0x0); /*0xffffffff;*/
+    int err;
+    REG_DEFINITION_t *regDefPtr;
+
+    physAddr   = asic_getRegAddr(chip, reg, index, &err);
+
+    if (err != 0)
+    {
+      ASICPRIM_ERR(chip, reg, index, err, (uintptr_t)physAddr);
+      return -1;
+    }
+
+    regSf =  asic_getRegSubfieldAddr(chip, reg, subField);
+
+    if (regSf == NULL)
+    {
+       ASICPRIM_ERR(chip, reg, index, subField, 0);
+       return -1;
+    }
+
+    regDefPtr = &regsDefinition[reg];
+    (void)regDefPtr; /* use it to avoid compiler undefine reference warning. */
+
+   if ( (regDefPtr->regFlags & BIG_ENDIAN_FLAG)
+         && ( (regDefPtr->byteSize/4) > 1) )
+   {
+      /* Big endian so read from last word first. */
+      physAddr += (regDefPtr->byteSize / 4) - 1;
+   }
+
+   /* lock for single threaded accesses */
+   /* read */
+   if ( (err=asic_read32(chip,(uintptr_t *)physAddr, &data, reg, index)) != 0)
+   {
+      ASICPRIM_ERR(chip, reg, index, err, (uintptr_t)physAddr);
+      ASICPRIM_REGNAME(chip, regDefPtr->regName);
+      return -1;
+   }
+   /* create a 1's bit field mask as big as the size */
+   mask = mask >> (32 - (regSf->size));
+   /* move the mask to the right offset */
+   mask = mask << regSf->offset;
+   /* zero out the unwanted bit fields */
+   data = data & mask;
+   /* right shift to the 0 bit*/
+   data = data >> regSf->offset;
+
+   *value = data;
+
+   return 0;
+}
+
+
+
+**********************************************************
+
+
+
+
+portConfig = asicReadPportMacReg ( NEO_MAC_40G_PORT_RESET, port );
+--------------------------------------------------------------------
+
+asicReadPportMacReg() ->  asicReadSlotPortMacReg():
+
+uint32_t macIdx = asicSlotPortToMACIndex(slotPort);
+
+hwReg = asicGetSlotPortReg(slotPort, reg);   ---->   
+
+ret = asicReadReg32(thisCpu, hwReg, macIdx, &value);
+
+return(value);
+
+--------------------------------------------------------------------
+asicGetFieldFromData ( 0, NEO_MAC_40G_PORT_RESET, RESET_MAC_TX_EN, &IsTxEnabled, portConfig );
+
+
+
+
+*********************************************************************
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

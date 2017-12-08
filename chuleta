@@ -1,0 +1,78 @@
+****************OTSI scripts repo
+git clone git@github.hpe.com:emmanuel-vargas-blanco/lazydogs.git
+
+****************HM update
+git clone git@github.hpe.com:hpe-networking/hm.git
+sudo -E pip3 install hm/ --upgrade
+rm -rf hm
+
+
+
+****************Limpiar variables de proxy
+unset http_proxy
+unset ftp_proxy
+unset https_proxy
+
+****************VPN to lab
+cd /etc/openvpn
+sudo openvpn /etc/openvpn/pvsdk-lab.ovpn
+hm resources info
+hm tickets open -r emerald20 --timeout 180
+hm tickets extend <931> <90>
+hm tickets info
+hm tickets close 2859
+
+****************Build 
+for HW
+cd buildhw
+git clean -xdff
+cmake .. -DCMAKE_TOOLCHAIN_FILE=../tools/cmake/arm-discovery-linux-gnueabi.toolchain
+make -j2
+make -j2 pvhwzerotest
+cp ~/Documents/scripts/lazydogs/switch-scripts/copy2switch.sh .
+
+./copy2switch.sh 172.16.231.54 --all-tar
+./copy2switch.sh 172.16.231.54 --hwz-tar
+
+
+scp test/hwzero/pvhwzerotest root@172.16.230.45:
+scp -r test/unit/mocking-data/profiles root@172.16.230.143:
+scp libprovision.so.0.8.0+build.807.9882e4a root@172.16.230.143:
+
+****Switch
+ssh root@172.16.231.54
+tar xvzf <file>
+export PVSDK_HW_PROFILE_ROOT_PATH=profiles/hw_conf/ PVSDK_USER_PROFILE_ROOT_PATH=profiles/usr_conf/
+./pvhwzerotest --gtest_filter=pv_network_ports_matrix.network_ports_enable
+./pvhwzerotest --gtest_filter=pv_phy.mdio_cmd_list
+
+*****Alias for switch
+alias allunzip='tar xvzf c2s-all.tar.gz'
+alias hwzunzip='tar xvzf c2s-hwzero.tar.gz'
+alias setprofiles='export PVSDK_HW_PROFILE_ROOT_PATH=profiles/hw_conf/ PVSDK_USER_PROFILE_ROOT_PATH=profiles/usr_conf/'
+
+
+./pvhwzerotest --gtest_filter=pv_network_ports_matrix.network_ports_enable
+./pvhwzerotest --gtest_filter=pv_network_ports_matrix.network_ports_link_en
+
+alias runphy='./pvhwzerotest --gtest_filter=pv_phy_matrix.mdio_cmd_list'
+set environment PVSDK_USER_PROFILE_ROOT_PATH=profiles/usr_conf/
+set environment PVSDK_HW_PROFILE_ROOT_PATH=profiles/hw_conf/
+
+- run (or r) --gtest-filter="filter"
+run --gtest_filter=pv_bfft.pacuare_vlans
+
+
+run --gtest_filter=pv_network_ports_matrix.network_ports_enable
+b /home/pvsdk/ws/test/hwzero/tests/matrix/public/pv_network_ports_matrix.cpp:429
+
+- breakpoint (or b) file.c:42
+- delete //to delete all breakpoints
+- line (or l) //to print lines
+- print (or p) value
+- next (or n) //to continue to the next runtime line
+- step (or s) //step into
+
+- continue (or c)
+- quit (or q)
+

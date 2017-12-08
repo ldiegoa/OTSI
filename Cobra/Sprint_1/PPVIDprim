@@ -1,0 +1,468 @@
+/**PROC+**********************************************************************
+ * Name:      asicWriteToPportPpvidReg
+ *
+ * Purpose:   Write to a per-port register field
+ *
+ * Params:    reg      - ppvid register 1-4
+ *            pport    - physical port
+ *            vid      - new vid
+ *            protocol - new protocol
+ *
+ * Returns:   none
+ *
+ * Note:      Each of these 4 ppvid tables is indexed by MAC port
+ *            and has the following layout:
+ *
+ *             31                      16 15     13 12              0
+ *            --------------------------------------------------------
+ *            |      Unused           |E | Protocol|    VID          |
+ *            --------------------------------------------------------
+ *            where E = Enable
+ *
+ * Note:      These registers do not have a entry for chip port 0
+ *            and chip port 1 is in location 0
+ *
+ * Note:      chip port 1-24 = physical ports  (uses entries 0-23)
+ *            chip port 25   = conduit port    (uses entries 24)
+ *
+ * Note:      IPv4 must be in the 3rd PPVID register if you want it
+ *            to also include IPv4 error type.
+ *            IPv6 must be in the 2nd PPVID register if you want it
+ *            to also include IPv6 error type and IPv6 other type.
+ *            If IPV4 type is put in the 4th PPVID register, it will 
+ *            also include IPv4 error type and ARP type.
+ *            The 1st PPVID register has no unique characteristics.
+ **PROC-**********************************************************************/
+
+void asicWriteToPportPpvidReg(int reg, PPORT_t pport, VID_t vid,
+                              PROTOCOL_t protocol)
+{
+   REG_DEFS_t hwReg = (REG_DEFS_t)0;
+   int        hwProtocol;
+   uint32_t   value;
+   
+   /* should only be programmimg local pports */
+   ASSERT(bsp_port_to_slot(pport) == thisCpu);
+
+   switch (reg) {
+    case 1:
+      hwReg       = NEO_MAC_1G_PPVID1_REG;
+      break;
+    case 2:
+      hwReg       = NEO_MAC_1G_PPVID2_REG;
+      break;
+    case 3:
+      hwReg       = NEO_MAC_1G_PPVID3_REG;
+      break;
+    case 4:
+      hwReg       = NEO_MAC_1G_PPVID4_REG;
+      break;
+    default:
+      ASSERT(0);
+   }
+   hwReg = asicGetPportReg(pport, hwReg);
+
+   if (vid == 0) {
+      /* disabling protocol vlan, clear all fields */
+      asicWritePportMacReg(hwReg, pport, 0);
+   }
+   else {
+      if (protocol == PROTO_APPLETALK_ARP) {
+         /* We use the 1st user defineable protocol register for appletalk 
+          * arp since the HW does not have that protocol pre-defined.
+          * See common_regs_init.dat for where it set up to be
+          * appletalk arp.
+          */
+         hwProtocol = HW_L3_TYPE_USER_DEF1;
+      }
+      else {
+         hwProtocol = protocolToHwProtocol(protocol);
+         ASSERT(hwProtocol != HW_L3_TYPE_UNKNOWN);
+      }
+
+      /* enabling or changing protocol vlan */
+      value = asicReadPportMacReg(hwReg, pport);
+
+      asicSetFieldToData(thisCpu, hwReg, PPVID1_1G_EN, true, &value);
+      asicSetFieldToData(thisCpu, hwReg, PPVID1_1G, vid, &value);
+      asicSetFieldToData(thisCpu, hwReg, L3_TYPE1_1G,  hwProtocol, &value);
+
+      asicWritePportMacReg(hwReg, pport, value);
+   }
+}
+
+//*********************************************************************************************
+typedef enum {
+  PROTO_NONE = 0,
+  PROTO_IP,
+  PROTO_IPX,
+  PROTO_ARP,
+  PROTO_DECLAT,
+  PROTO_APPLETALK,
+  PROTO_SNA,
+  PROTO_NETBIOS,
+  PROTO_IPV6,
+  PROTO_APPLETALK_ARP,
+  MAX_PROTOCOL
+} PROTOCOL_t;
+
+
+/******************************************************************
+ * BttF PROTOCOL_t to/from HW L3 Type 
+ ******************************************************************/
+int PROTOCOL_t_TO_HW_L3_TYPES[] =
+{
+  HW_L3_TYPE_UNKNOWN,
+  HW_L3_TYPE_IPV4,
+  HW_L3_TYPE_IPX,
+  HW_L3_TYPE_ARP,
+  HW_L3_TYPE_UNKNOWN,
+  HW_L3_TYPE_APPLETALK,
+  HW_L3_TYPE_SNA,
+  HW_L3_TYPE_NETBEUI,
+  HW_L3_TYPE_IPV6,
+  HW_L3_TYPE_UNKNOWN,
+  HW_L3_TYPE_UNKNOWN,
+  HW_L3_TYPE_UNKNOWN,
+  HW_L3_TYPE_UNKNOWN,
+  HW_L3_TYPE_UNKNOWN,
+  HW_L3_TYPE_UNKNOWN,
+  HW_L3_TYPE_UNKNOWN,
+  HW_L3_TYPE_UNKNOWN
+};
+
+
+
+/**PROC+**********************************************************************
+ * Name:      protocolToHwProtocol
+ *
+ * Purpose:   convert SW protocol into HW protocol number
+ *
+ * Params:    protocol - SW protocol number
+ *
+ * Returns:   HW protocol number or HW_L3_TYPE_UNKNOWN
+ *
+ **PROC-**********************************************************************/
+int protocolToHwProtocol(PROTOCOL_t protocol)
+{
+   int hwProtocol;
+
+   ASSERT(protocol < MAX_PROTOCOL);
+
+   /* conversion table above only has 16 entries */
+   if (protocol > MAX_SW_TO_HW_PROTOCOLS)
+      return(HW_L3_TYPE_UNKNOWN);
+
+   hwProtocol = PROTOCOL_t_TO_HW_L3_TYPES[protocol];
+
+   return(hwProtocol);
+}
+
+
+
+/**************************************************************************************************************
+
+  NEO_MAC_10G_PVID_REG                     = 3612,   /* Address = 0xf8b00020 */
+
+  typedef enum {
+  PVID_10G = 0,                                    /* BitOffset= 0  Size=12 */
+  PVID_10G_EN                                      /* BitOffset=16  Size= 1 */
+  } NEO_MAC_10G_PVID_REG_SUBFIELDS_t;
+
+  NEO_MAC_10G_PPVID1_REG                   = 3613,   /* Address = 0xf8b00024 */
+
+typedef enum {
+  PPVID1_10G = 0,                                  /* BitOffset= 0  Size=12 */
+  L3_TYPE2,                                        /* BitOffset=12  Size= 4 */
+  PPVID1_10G_EN                                    /* BitOffset=16  Size= 1 */
+} 
+
+  NEO_MAC_10G_PPVID1_REG_SUBFIELDS_t;
+  NEO_MAC_10G_PPVID2_REG                   = 3614,   /* Address = 0xf8b00028 */
+  NEO_MAC_10G_PPVID3_REG                   = 3615,   /* Address = 0xf8b0002c */
+  NEO_MAC_10G_PPVID4_REG 
+
+  NEO_MAC_40G_PVID_REG                     = 3784,   /* Address = 0xf8e02018 */
+  NEO_MAC_40G_PPVID1_REG                   = 3785,   /* Address = 0xf8e0201c */
+
+typedef enum {
+  PPVID1_40G = 0,                                  /* BitOffset= 0  Size=12 */
+  L3_TYPE1_40G                                     /* BitOffset=12  Size= 4 */
+} NEO_MAC_40G_PPVID1_REG_SUBFIELDS_t;
+
+  NEO_MAC_40G_PPVID2_REG                   = 3786,   /* Address = 0xf8e02020 */
+  NEO_MAC_40G_PPVID3_REG                   = 3787,   /* Address = 0xf8e02024 */
+  NEO_MAC_40G_PPVID4_REG                   = 3788,   /* Address = 0xf8e02028 */
+
+  NEO_MAC_1G_PVID_REG                      = 3875,   /* Address = 0xf8000020 */
+
+typedef enum {
+  PVID = 0,                                        /* BitOffset= 0  Size=12 */
+  PVID_MATCH_EN                                    /* BitOffset=16  Size= 1 */
+} NEO_MAC_1G_PVID_REG_SUBFIELDS_t;
+
+  NEO_MAC_1G_PPVID1_REG                    = 3876,   /* Address = 0xf8000024 */
+
+typedef enum {
+  PPVID1_1G = 0,                                   /* BitOffset= 0  Size=12 */
+  L3_TYPE1_1G,                                     /* BitOffset=12  Size= 4 */
+  PPVID1_1G_EN                                     /* BitOffset=16  Size= 1 */
+} NEO_MAC_1G_PPVID1_REG_SUBFIELDS_t;
+
+  NEO_MAC_1G_PPVID2_REG                    = 3877,   /* Address = 0xf8000028 */
+  NEO_MAC_1G_PPVID3_REG                    = 3878,   /* Address = 0xf800002c */
+  NEO_MAC_1G_PPVID4_REG                    = 3879,   /* Address = 0xf8000030 */
+//*********************************************************************************************
+
+
+
+
+
+
+
+
+/**PROC+**********************************************************************
+ * Name:      asicWriteToPportMacVidReg
+ *
+ * Purpose:   Write to a per-port double q tag control register
+ *
+ * Params:    pport    - physical port 
+ *            reg      - register of interest
+ *            value    - entire register content
+ *
+ * Returns:   none
+ *
+ **PROC-**********************************************************************/
+void asicWriteToPportMacVidReg(PPORT_t pport, REG_DEFS_t reg, uint32_t value)
+{
+   REG_DEFS_t hwReg = (REG_DEFS_t)0;
+   
+   /* should only be programmimg local pports */
+   ASSERT(bsp_port_to_slot(pport) == thisCpu);
+
+   hwReg = asicGetPportReg(pport, reg);
+
+   asicWritePportMacReg(hwReg, pport, value);
+   
+}
+
+/**PROC+**********************************************************************
+ * Name:      asicWriteToPportMacVidRegField
+ *
+ * Purpose:   Write to a per-port double q tag control register field
+ *
+ * Params:    pport    - physical port 
+ *            reg      - register of interest
+ *            subField - sub field index 
+ *            value    - sub field value
+ *
+ * Returns:   none
+ *
+ **PROC-**********************************************************************/
+void asicWriteToPportMacVidRegField(PPORT_t pport, REG_DEFS_t reg, int subField,
+                                    uint32_t value)
+{
+   REG_DEFS_t hwReg = (REG_DEFS_t)0;
+
+   /* should only be programmimg local pports */
+   ASSERT(bsp_port_to_slot(pport) == thisCpu);
+
+   hwReg = asicGetPportReg(pport, reg);
+
+   asicWriteToPportMacRegField(hwReg, pport, subField, value);
+   
+}
+
+/**PROC+**********************************************************************
+ * Name:      bttfFindEmptyPPVIDReg
+ *
+ * Purpose:   find a unused PPVID reg giving preference based on protocol
+ *
+ * Params:    pport    - pport needing PPVID register
+ *            protocol - protocol to occupy empty location
+ *
+ * Returns:   register to use
+ *
+ **PROC-**********************************************************************/
+#ifdef PROTOCOL_VLANS
+int bttfFindEmptyPPVIDReg(PPORT_t pport, PROTOCOL_t protocol)
+{
+   int reg;
+
+   if (protocol == PROTO_IP) {
+      /* IPv4 must go into the 3rd register for it to include
+       * IPv4 error pkts
+       */
+      reg = PPVID_REG_IPV4_AND_IPV4_ERROR;
+      ASSERT(currentPpvidProtocol[pport][reg] == PVLAN_UNUSED_PROTOCOL);
+   }
+   else if (protocol == PROTO_IPV6) {
+      /* IPv6 must go into the 2nd register for it to include
+       * IPv6 error pkts
+       */
+      reg = PPVID_REG_IPV6_AND_IPV6_ERROR;
+      ASSERT(currentPpvidProtocol[pport][reg] == PVLAN_UNUSED_PROTOCOL);
+   }
+   else {
+      /* just find a empty one, giving preference to the 1st and
+       * last in case IPv4 or IPV6 is defined later 
+       */
+      if (currentPpvidProtocol[pport][PPVID_REG_1] == PVLAN_UNUSED_PROTOCOL)
+         reg = PPVID_REG_1;
+      else if (currentPpvidProtocol[pport][PPVID_REG_4]
+                                                   == PVLAN_UNUSED_PROTOCOL)
+         reg = PPVID_REG_4;
+      else if (currentPpvidProtocol[pport][PPVID_REG_2]
+                                                   == PVLAN_UNUSED_PROTOCOL)
+         reg = PPVID_REG_2;
+      else if (currentPpvidProtocol[pport][PPVID_REG_3]
+                                                   == PVLAN_UNUSED_PROTOCOL)
+         reg = PPVID_REG_3;
+      else {
+         ASSERT(0);
+         reg = PPVID_REG_4;
+      }
+   }
+
+   ASSERT((reg > 0) && reg <= NUM_OF_SW_PPVID_REGS);
+
+   return(reg);
+}
+
+/**MOD+***********************************************************************
+ * Module:    bttfHwVlans.c
+ * Purpose:   Bttf platform dependent vlan code that programs the HW
+ *
+ * Note: The mac pvid registers have an enable field. It is currently
+ *       set to true for all ports at init time and is not changed by
+ *       this code. If we start doing double-Q-tagging, we will have to
+ *       change that.
+ *
+ * Note: PPVID registers:
+ *        (1) IPv4 must be in the 3rd PPVID register if you want it
+ *            to also include IPv4 error type.
+ *        (2) IPv6 must be in the 2nd PPVID register if you want it
+ *            to also include IPv6 error type and IPv6 other type.
+ *        (3) If IPV4 type is put in the 4th PPVID register, it will 
+ *            also include IPv4 error type and ARP type.
+ *        (4) The 1st PPVID register has no unique characteristics.
+ *
+ * --------------------------------------------------------------------------
+
+
+/**PROC+**********************************************************************
+ * Name:      bttfHwUpdatePpvids
+ *
+ * Purpose:   Update the hardware PPVID registers for protocol vlans 
+ *
+ * Params:    vlan             - vlan being added, updated, or deleted
+ *            vid              - vid of the vlan
+ *            vlanType         - vlan type (port based or protocol)
+ *            protocolMap      - protocol map if protocol type vlan
+ *            memberLports     - portmap of member lports
+ *            taggedLports     - portmap of tagged lports
+ *
+ * Returns:   none
+ *
+ * Note:      See note at top of file about BTTF PPVID registers issues
+ **PROC-**********************************************************************/
+#ifdef PROTOCOL_VLANS
+void bttfHwUpdatePpvids(VLAN_t vlan, VID_t vid,
+                        VLAN_TYPE_t vlanType, PROTOCOL_MAP *protocolMap,
+                        PORT_MAP *memberPports, PORT_MAP *taggedPports)
+{
+   PPORT_t    pport;
+   PPORT_t    last_pport;
+   PROTOCOL_t protocol;
+   int        reg;
+   int        ipreg;
+   bool       found;
+   VID_t      zeroVid;
+   bool       clearOmVlanTagRam = 0;
+   bool       otherProtocolSet = 0;
+
+   /* Loop thru all local pports */
+   FOR_ALL_LOCAL_PPORTS(pport, last_pport)
+   {
+
+      /* 
+       * 1st remove any protocols no longer set or pports no longer
+       * part of this vlan 
+       */
+      for (reg = 1; reg <= NUM_OF_SW_PPVID_REGS; reg++)
+      {
+         /* 1st remove any protocols no longer set */
+         protocol = currentPpvidProtocol[pport][reg];
+         if ((protocol != PVLAN_UNUSED_PROTOCOL) &&
+             (currentPpvid[pport][reg] == vid))
+         {
+            /* entry is used by this vlan */
+            if ((! is_protocol_set(protocolMap, protocol)) ||
+                (! is_port_set(memberPports, pport)) ||
+                (is_port_set(taggedPports, pport)))
+            {
+               /* This protocol is no longer set for this vlan or
+                * or this port is no longer part of the vlan (or is tagged),
+                * so remove from ppvid reg 
+                */
+               zeroVid = 0; /* disables protocol vlan */
+               asicWriteToPportPpvidReg(reg, pport, zeroVid, (PROTOCOL_t) 0);
+               clearOmVlanTagRam = 1;
+                                                                         
+               ADDRMGR_PRINTF(("bttfHwUpdatePpvids - deleting pport %d "
+                               "protocol %d from vid %d - reg %d\n",
+                               pport, currentPpvidProtocol[pport][reg],
+                               currentPpvid[pport][reg], reg));
+
+               currentPpvid[pport][reg]         = PVLAN_UNUSED_VID;
+               currentPpvidProtocol[pport][reg] =
+                  (PROTOCOL_t) PVLAN_UNUSED_PROTOCOL;
+            }
+            else
+            {
+               otherProtocolSet = 1;
+            }
+         }
+      }
+      /* We need to make sure that we do not set a port VLAN combination to be
+         tagged when there is still a protocol left on that VLAN */
+      if(clearOmVlanTagRam == 1 && otherProtocolSet == 0)
+      {
+         asicWriteOmVlanTagRam(pport, vid, OM_VLAN_CLEAR);
+      }
+      clearOmVlanTagRam = 0;
+      otherProtocolSet = 0;
+
+      /* 
+       * 2nd, add this port if this port is a member of this vlan untagged
+       * and not already added
+       */
+      if ((is_port_set(memberPports, pport)) &&
+          (! is_port_set(taggedPports, pport))) {
+
+         /* 
+          * Move any used entries that are not IPv4 or IPv6 into
+          * the 1st and last entries 
+          */
+         ipreg = PPVID_REG_IPV4_AND_IPV4_ERROR;
+         if ((currentPpvidProtocol[pport][ipreg] != PROTO_IP) &&
+             (currentPpvidProtocol[pport][ipreg] != PVLAN_UNUSED_PROTOCOL) &&
+             (is_protocol_set(protocolMap, PROTO_IP))) {
+            /* PPVID is occupied with some protocol other then Ipv4 and IPv4
+             * is being set, so we must move it
+             *
+             * just find a empty one we can move it to. There must be one
+             * since we are adding a new protocol (ie ipv4)
+             */
+            reg = bttfFindEmptyPPVIDReg(pport,
+                                        currentPpvidProtocol[pport][ipreg]);
+            ASSERT((reg > 0) && reg <= NUM_OF_SW_PPVID_REGS);
+
+            ADDRMGR_PRINTF(("bttfHwUpdatePpvids - moving pport %d "
+                            "protocol %d from vid %d - reg %d to reg %d\n",
+                            pport, currentPpvidProtocol[pport][ipreg],
+                            currentPpvid[pport][ipreg], ipreg, reg));
+
+            asicWriteToPportPpvidReg(reg, pport,
+                                     currentPpvid[pport][ipreg],
+                                                                           

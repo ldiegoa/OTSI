@@ -1,0 +1,37 @@
+TEST_F(matrix_pv_network_ports, pv_network_ports_status_get) {
+
+	  int e_status           = 0;
+	  uint32_t port_id_aux = (rand_boolean()) ?
+	                         (pvtest_rand.get_rnd() % 2) : (1 +
+	                                                        MAX_FRONT_PLANE_PORTS +
+	                                                        (pvtest_rand.get_rnd() %
+	                                                         2));
+	  //struct pv_vport invalid_vport = {};
+	  struct pv_network_ports_status status = {};
+	  struct pv_vport first_port_failed = {};
+
+	  /* Check1 Network Ports initialized and test OUT bounds parameters (not in
+	     range 2-57) for Pacuare */
+	  e_status = pv_vports_bitmap_vport_remove(vport, &bitmap);
+	  EXPECT_EQ(PV_OK,           e_status);
+
+	  e_status = pv_network_ports_uninitialize(node_id);
+	  EXPECT_EQ(PV_OK,           e_status);
+
+	  e_status = pv_vports_phys_port_init(chassis_id, node_id, port_id_aux, &vport);
+	  EXPECT_EQ(PV_OK,           e_status);
+
+	  e_status = pv_vports_bitmap_vport_add(vport, &bitmap);
+	  EXPECT_EQ(PV_OK,           e_status);
+
+	  e_status = pv_network_ports_initialize(node_id);
+	  EXPECT_EQ(PV_OK,           e_status);
+
+	  e_status = pv_network_ports_init(node_id, bitmap, &first_port_failed);
+	  EXPECT_EQ(PV_OK,           e_status);
+
+	  e_status = pv_network_ports_status_get(node_id, vport, &status);
+	  EXPECT_EQ(PV_OUT_OF_RANGE, e_status);
+
+}
+

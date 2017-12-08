@@ -1,0 +1,164 @@
+/******************************************************************************
+ * PPVID regs special defines 
+ *
+ *   IPv6 must be in the 2nd PPVID register if you want it
+ *         to also include IPv6 error type and IPv6 other type.
+ *   IPv4 must be in the 3rd PPVID register if you want it
+ *         to also include IPv4 error type.
+ *   IPV4 must be in the 4th PPVID register, it you want it
+ *         to also include IPv4 error type and ARP type.
+ *   The 1st PPVID register has no unique characteristics.
+ *****************************************************************************/
+#define PPVID_REG_1  1
+#define PPVID_REG_2  2
+#define PPVID_REG_3  3
+#define PPVID_REG_4  4
+#define PPVID_REG_IPV6_AND_IPV6_ERROR          PPVID_REG_2
+#define PPVID_REG_IPV4_AND_IPV4_ERROR          PPVID_REG_3
+#define PPVID_REG_IPV4_AND_IPV4_ERROR_AND_ARP  PPVID_REG_4
+
+#define MAX_PPVID_REGS_PER_PORT 4
+
+
+/**MOD+***********************************************************************
+ * Module:    ethernetLib.c
+ *
+ * Copyright (c) 1999-2009, Hewlett-Packard Company.
+ * All Rights Reserved.
+ *
+ * The contents of this software are proprietary and confidential to the
+ * Hewlett-Packard Company.  No part of this program may be photocopied,
+ * reproduced, or translated into another programming language without
+ * prior written consent of the Hewlett-Packard Company.
+ *
+ * Purpose:   Ethernet library routines 
+ *
+ **MOD-***********************************************************************/
+
+#include "switch.h"
+#include "sw_ethernet.h"
+#include "addrmgr_pub.h"
+
+
+/**PROC+**********************************************************************
+ * Name:      protocolToEthertype
+ *
+ * Purpose:   Change a protocol number to cooresponding etherType
+ *
+ * Params:    protocol  - protocol number
+ *
+ * Returns:   IP        - 0x0800
+ *            IPX       - 0x8137
+ *            ARP       - 0x0806
+ *            DecLat    - 0x6004
+ *            AppleTalk - 0x809b
+ *            SNA       - 0x80d5
+ *            NetBEUI   - 0x00f0
+ **PROC-**********************************************************************/
+PROTOCOL_TYPE_t protocolToEthertype(PROTOCOL_t protocol)
+{
+   switch(protocol)
+   {
+    case PROTO_IP:
+      return(DOD_TYPE);
+    case PROTO_IPX:
+     return(IPX_TYPE);
+    case PROTO_ARP:
+      return(ARP_TYPE);
+    case PROTO_APPLETALK:
+      return(APPLETALK_TYPE);
+    case PROTO_SNA:
+      return(SNA_TYPE);
+    case PROTO_NETBIOS:
+      return(NETBEUI_TYPE);
+   case PROTO_IPV6:
+      return(IPV6_TYPE);
+    default:
+      ASSERT(0)
+      break;
+   }
+   return((PROTOCOL_TYPE_t)0);
+}
+
+/**PROC+**********************************************************************
+ * Name:      ethertypeToProtocol
+ *
+ * Purpose:   Change a etherType to cooresponding protocol number
+ *
+ * Params:    etherType - ethernet type of the level-3 protocol
+ *
+ * Returns:   protocol number or 0 if protocol is unknown
+ **PROC-**********************************************************************/
+PROTOCOL_t ethertypeToProtocol(PROTOCOL_TYPE_t etherType)
+{
+   switch(etherType)
+   {
+    case DOD_TYPE:
+      return(HW_L3_TYPE_IPV4);   
+    case IPV6_TYPE:
+      return(PROTO_IPV6);
+    case ARP_TYPE:
+      return(HW_L3_TYPE_ARP);
+    case IPX_TYPE||IPX2_TYPE:
+      return(HW_L3_TYPE_IPX);
+    case APPLETALK_TYPE:
+      return(HW_L3_TYPE_APPLETALK);
+    case SNA_TYPE :
+      return(HW_L3_TYPE_SNA);
+    case NETBEUI_TYPE:
+      return(HW_L3_TYPE_NETBEUI);
+   }
+   return(HW_L3_TYPE_UNKNOWN);
+}
+
+/*
+ * Ethernet types fields recognized by CIPP.
+ */
+#define IPV4_TYPE            0x0800    /* DoD Internet (IP) type            */
+#define ARP_TYPE             0x0806    /* Address Resolution Protocol type  */
+#define IPX_TYPE             0x8137    /* Novell Type Field                 */
+#define IPX2_TYPE            0x8138    /* Novell type for PVLAN support     */
+#define APPLETALK_TYPE       0x809b    /* AppleTalk type                    */
+#define SNA_TYPE             0x80d5    /* SNA type                          */
+#define TAG_TYPE             0x8100    /* 802.1Q TPID tag type              */
+#define HP_SWITCH_TYPE       0x8859    /* HP's switch-switch protocol       */
+#define SLOW_PROTO_TYPE      0x8809    /* LACP is defined to this type      */
+#define AAA8021X_TYPE        0x888e    /* EAPOL packet IETF 888E, MS 8180   */
+#define IPV6_TYPE            0x86dd    /* IPv6 Type                         */
+#define LLDP_TYPE            0x88cc    /* lldp type - not yet standard      */
+#define NETBEUI_TYPE         0x00f0
+#define TRILL_TYPE           0x22f3
+#define MAC_CONTROL_TYPE     0x8808
+#define JUMBO_FRAMES_TYPE    0x8870   
+#define PROV_BRIDGING_TYPE   0x88a8
+#define VN_TAG_TYPE          0x893e
+#define E_TAG_TYPE           0x893e
+
+
+/* L3 Protocols (index into protocol filters & for ppvid) */
+enum hw_l3_type{
+  HW_L3_TYPE_UNKNOWN    =  0,
+  HW_L3_TYPE_IPV4       =  1,
+  HW_L3_TYPE_IPV6       =  2,
+  HW_L3_TYPE_ARP        =  3,
+  HW_L3_TYPE_BPDU       =  4,
+  HW_L3_TYPE_IPX        =  5,
+  HW_L3_TYPE_APPLETALK  =  6,
+  HW_L3_TYPE_NETBEUI    =  7,
+  HW_L3_TYPE_IPV6_OTHER =  8,
+  HW_L3_TYPE_SNA        =  9,
+  HW_L3_TYPE_ISO        = 10,
+  HW_L3_TYPE_USER_DEF1  = 11,
+  HW_L3_TYPE_USER_DEF2  = 12,
+  HW_L3_TYPE_IPV4_ERROR = 13,
+  HW_L3_TYPE_IPV6_ERROR = 14,
+  HW_L3_TYPE_ERROR      = 15,
+  HW_MAX_L3_TYPE
+} 
+
+ 
+
+
+
+
+                          

@@ -1,0 +1,62 @@
+//Feat-l2-401
+
+//PVI
+
+//--------------------------------------------get------------------------------------------
+int pvi_l2_mgr_sa_entry_specs_get(uint32_t                  node_id,
+                               struct pv_mac_addr        mac,
+                               uint32_t                  vlan_number,
+                               struct pv_l2_entry_specs *l2_sa_entry_specs)
+{
+  int  status                                        = 0;
+  bool vlan_number_exists                            = false;
+  struct pvi_l2_mgr_driver_instance *driver_instance = NULL;
+  char mac_address_str[DEFAULT_MAC_STR_LEN];
+
+  memset(mac_address_str, 0, sizeof(char) * DEFAULT_MAC_STR_LEN);
+
+  /* Convert the mac address to a hexadecimal string format */
+  status = pvi_logtrace_util_byte_array_to_hex_string(
+    sizeof(mac.addr),
+    mac.addr,
+    mac_address_str);
+  if (status) return status;
+
+  /* Obtain the driver instance for the node */
+  driver_instance = l2_mgr->driver_instances[node_id];
+
+  if (NULL == driver_instance) return PV_FEATURE_NOT_INITIALIZED;
+
+  /* Check that the vlan_number exists */
+  status = pvi_vlans_mgr_vlan_exists(node_id, vlan_number, &vlan_number_exists);
+  if (status) return status;
+
+  if (!vlan_number_exists) {
+    pvi_logtrace_log_trace(PV_LOGTRACE_LOGGING_LEVEL_ERROR,
+                           "entry_specs_get",
+                           "Vid doesn't exists",
+                           &node_id,
+                           &vlan_number,
+                           mac_address_str);
+    return PV_INVALID_VLAN;
+  }
+
+  /* Get the L2 SA entry info form hardware */
+  status =
+    driver_instance->interface->ops->entry_sa_specs_get(node_id,
+                                                     driver_instance,
+                                                     mac,
+                                                     vlan_number,
+                                                     l2_sa_entry_specs);
+  if (status) return status;
+
+  pvi_logtrace_log_trace(PV_LOGTRACE_LOGGING_LEVEL_INFO,
+                         "sa_entry_specs_get",
+                         "Obtained the L2 sa entry specs",
+                         &node_id,
+                         &vlan_number,
+                         mac_address_str);
+  return status;
+}
+
+//--------------------------------------------set------------------------------------------

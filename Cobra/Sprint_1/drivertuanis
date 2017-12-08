@@ -1,0 +1,616 @@
+/*
+ * Copyright (C) 2017 Hewlett Packard Enterprise Development LP.
+ * All Rights Reserved.
+ *
+ * The contents of this software are proprietary and confidential to the
+ * Hewlett Packard Enterprise Development LP. No part of this program may be
+ * photocopied, reproduced, or translated into another programming language
+ * without prior written consent of the Hewlett Packard Enterprise
+ * Development LP.
+ */
+
+// I N C L U D E S
+#include <legacy/pv/asic/asic_specific.h>
+#include <legacy/asicPrim.h>
+#include <legacy/prim.p/primIpp.h>
+#include <legacy/prim.p/primMac.h>
+#include <legacy/prim.p/lpr.h>
+#include <provision/internal/core/pvi_driver.h>
+#include \
+  <provision/internal/fli/network_ports/network_ports_subsystem/pvi_network_ports_mgr.h>
+
+
+#define FRONT_PLANE_PORTS 60
+// D E F I N E S
+
+/** Network ports driver name */
+#define NETWORK_PORTS_DRIVER_NAME "matrix_network_ports_driver"
+
+// E N U M E R A T I O N S
+
+// S T R U C T U R E S
+
+// P R I V A T E   D A T A
+
+// F U N C T I O N S
+static int pvi_network_ports_matrix_driver_node_initialize(
+  uint32_t                                      node_id,
+  struct pvi_network_ports_mgr_driver_instance *driver_instance,
+  bool                                          warmboot)
+{
+  return PV_FEATURE_UNAVAILABLE;
+}
+
+static int pvi_network_ports_matrix_driver_node_uninitialize(
+  uint32_t node_id,
+  void    *priv)
+{
+  return PV_FEATURE_UNAVAILABLE;
+}
+
+static int pvi_network_ports_matrix_driver_resources_read(
+  uint32_t                                node_id,
+  void                                   *priv,
+  struct pvi_network_ports_mgr_resources *resources)
+{
+  return PV_FEATURE_UNAVAILABLE;
+}
+
+static int pvi_network_ports_matrix_driver_capabilities_get(
+  uint32_t                              node_id,
+  void                                 *priv,
+  struct pv_vport                       port,
+  struct pv_network_ports_capabilities *capabilities)
+{
+  return PV_FEATURE_UNAVAILABLE;
+}
+
+static int pvi_network_ports_matrix_driver_init(
+  uint32_t                               node_id,
+  void                                  *priv,
+  struct pv_vport                        port,
+  struct pv_network_ports_configuration *config)
+{
+  return PV_FEATURE_UNAVAILABLE;
+}
+
+static int pvi_network_ports_matrix_driver_autoneg_config_set(
+  uint32_t        node_id,
+  void           *priv,
+  struct pv_vport port,
+  uint32_t        an_feat_mask)
+{
+  return PV_FEATURE_UNAVAILABLE;
+}
+
+static int pvi_network_ports_matrix_driver_autoneg_enable(
+  uint32_t        node_id,
+  void           *priv,
+  struct pv_vport port,
+  bool            an_enable)
+{
+  return PV_FEATURE_UNAVAILABLE;
+}
+
+static int pvi_network_ports_matrix_driver_speed_set(
+  uint32_t           node_id,
+  void              *priv,
+  struct pv_vport    port,
+  enum pv_port_speed speed)
+{
+  return PV_FEATURE_UNAVAILABLE;
+}
+
+static int pvi_network_ports_matrix_driver_max_frame_size_set(
+  uint32_t           node_id,
+  void              *priv,
+  struct pv_vport    port,
+  enum pv_port_speed speed,
+  uint32_t           max_frame_size)
+{
+  return PV_FEATURE_UNAVAILABLE;
+}
+
+static int pvi_network_ports_matrix_driver_eee_config_set(
+  uint32_t                           node_id,
+  void                              *priv,
+  struct pv_vport                    port,
+  enum pv_port_speed                 speed,
+  struct pv_network_ports_eee_config eee_config)
+{
+  return PV_FEATURE_UNAVAILABLE;
+}
+
+static int pvi_network_ports_matrix_driver_flow_ctrl_mode_set(
+  uint32_t             node_id,
+  void                *priv,
+  struct pv_vport      port,
+  enum pv_port_speed   speed,
+  enum pv_port_fc_mode fc_mode)
+{
+  return PV_FEATURE_UNAVAILABLE;
+}
+
+static int pvi_network_ports_matrix_driver_config_get(
+  uint32_t                               node_id,
+  void                                  *priv,
+  struct pv_vport                        port,
+  struct pv_network_ports_configuration *config)
+{
+  return PV_FEATURE_UNAVAILABLE;
+}
+
+static int pvi_network_ports_matrix_driver_config_set(
+  uint32_t                              node_id,
+  void                                 *priv,
+  struct pv_vport                       port,
+  struct pv_network_ports_configuration config)
+{
+  return PV_FEATURE_UNAVAILABLE;
+}
+
+static int pvi_network_ports_matrix_driver_sec_config_get(
+  uint32_t                                   node_id,
+  void                                      *priv,
+  struct pv_vport                            port,
+  struct pv_network_ports_sec_configuration *sec_config)
+{
+  return PV_FEATURE_UNAVAILABLE;
+}
+
+static int pvi_network_ports_matrix_driver_sec_config_set(
+  uint32_t                                  node_id,
+  void                                     *priv,
+  struct pv_vport                           port,
+  struct pv_network_ports_sec_configuration sec_config)
+{
+  return PV_FEATURE_UNAVAILABLE;
+}
+
+static int pvi_network_ports_matrix_driver_led_config_set(
+  uint32_t                           node_id,
+  void                              *priv,
+  struct pv_vport                    port,
+  struct pv_network_ports_led_config led_config)
+{
+  return PV_FEATURE_UNAVAILABLE;
+}
+
+static int pvi_network_ports_matrix_driver_led_config_get(
+  uint32_t                            node_id,
+  void                               *priv,
+  struct pv_vport                     port,
+  struct pv_network_ports_led_config *led_config)
+{
+  return PV_FEATURE_UNAVAILABLE;
+}
+
+static int pvi_network_ports_matrix_driver_loopback_mode_set(
+  uint32_t                   node_id,
+  void                      *priv,
+  struct pv_vport            port,
+  enum pv_port_speed         speed,
+  enum pv_port_loopback_mode lb_mode)
+{
+  return PV_FEATURE_UNAVAILABLE;
+}
+
+static int pvi_network_ports_matrix_driver_recirculation_enable(
+  uint32_t        node_id,
+  void           *priv,
+  struct pv_vport port,
+  bool            recirc_enable)
+{
+  uint32_t chip_port = 0;
+  int status         = 0;
+  uint32_t reg_data  = 0;
+
+  status = pv_vports_port_get(port, &chip_port);
+  if (status) return status;
+
+  if (recirc_enable) {
+    asicInitRecircPort(chip_port);
+  } else {
+    portRegs_egressWrite(0, chip_port, PORT_REGS_EGRESS_PORT_DISABLE, 1, 0);
+
+    asicSetFieldToData(thisCpu, NEO_MAC_RECIRC_PORT_RESET_D3BA,
+                       D3BA_PKR_EN, 0, &reg_data);
+    asicSetFieldToData(thisCpu, NEO_MAC_RECIRC_PORT_RESET_D3BA,
+                       D3BA_OFP_RESET_L, 0, &reg_data);
+    asicSetFieldToData(thisCpu, NEO_MAC_RECIRC_PORT_RESET_D3BA,
+                       D3BA_UNPKR_RESET_L, 0, &reg_data);
+    asicSetFieldToData(thisCpu, NEO_MAC_RECIRC_PORT_RESET_D3BA,
+                       D3BA_CP_RESET_L, 0, &reg_data);
+    asicWriteReg32(thisCpu, NEO_MAC_RECIRC_PORT_RESET_D3BA, chip_port,
+                   reg_data);
+
+    asicMipmiscReadReg32(thisCpu, NG_MIPMISC_MAC_CONFIG, chip_port,
+                         &reg_data);
+    asicSetFieldToData(0, NG_MIPMISC_MAC_CONFIG, MAC_MAC_RESET_L, 0x0,
+                       &reg_data);
+    asicMipmiscWriteReg32(thisCpu, NG_MIPMISC_MAC_CONFIG, chip_port,
+                          reg_data);
+  }
+  return PV_OK;
+}
+
+static int pvi_network_ports_matrix_driver_link_enable(
+  uint32_t           node_id,
+  void              *priv,
+  struct pv_vport    port,
+  enum pv_port_speed speed,
+  bool               enable)
+{
+  return PV_FEATURE_UNAVAILABLE;
+}
+
+static int pvi_network_ports_matrix_driver_enable(
+  uint32_t           node_id,
+  void              *priv,
+  struct pv_vport    port,
+  enum pv_port_speed speed,
+  bool               tx_enable,
+  bool               rx_enable)
+{
+  return PV_FEATURE_UNAVAILABLE;
+}
+
+static int pvi_network_ports_matrix_driver_link_status_get(
+  uint32_t           node_id,
+  void              *priv,
+  struct pv_vport    port,
+  enum pv_port_speed speed,
+  bool              *link)
+{
+  return PV_FEATURE_UNAVAILABLE;
+}
+
+static int pvi_network_ports_matrix_driver_status_get(
+  uint32_t                        node_id,
+  void                           *priv,
+  struct pv_vport                 port,
+  enum pv_port_speed              speed,
+  struct pv_network_ports_status *status)
+{
+  int e_status          = 0;
+  uint32_t port_id      = 0;
+
+  // bool     loopback_mode = 0;
+
+  uint32_t macMipMiscConfigRegData;
+  uint32_t mac_speed = 0x2; /* Default 1G */
+  uint32_t IsInReset;
+  uint32_t portConfig;
+  uint32_t IsTxEnabled = 0;
+  uint32_t IsRxEnabled = 0;
+
+  // enum pvi_ucx_mac_eee_mode   eee_mode          = PVI_UCX_MAC_EEE_MODE_MAX;
+  e_status = pv_vports_port_get(port, &port_id);
+  if (e_status) return e_status;
+  if (FRONT_PLANE_PORTS > port_id) return PV_INVALID_PORT;
+
+  // Link status is retrieved from hardware due to its volatility
+  e_status = pvi_network_ports_matrix_driver_link_status_get(node_id,
+		                                                     priv,
+		                                                     port,
+		                                                     status->speed,
+		                                                     &status->link);
+  if (e_status != PV_FEATURE_UNAVAILABLE) return e_status;
+
+  // Get MAC SPEED
+    asicMipmiscReadReg32(thisCpu, NG_MIPMISC_MAC_CONFIG, port_id,
+	                            &macMipMiscConfigRegData);
+  asicGetFieldFromData(thisCpu, NG_MIPMISC_MAC_CONFIG, MAC_MAC_SPEED_s2MAC,
+	                            &mac_speed, macMipMiscConfigRegData);
+  switch (mac_speed){
+
+    case 0x7:
+      status->speed = PV_PORT_SPEED_MAX;
+	  break;
+
+	case 0x6:
+	  status->speed = PV_PORT_SPEED_2P5G;
+	  break;
+
+	case 0x5:
+	  status->speed = PV_PORT_SPEED_100G;
+	  break;
+
+	case 0x4:
+	  status->speed = PV_PORT_SPEED_40G;
+	  break;
+
+	case 0x3:
+	  status->speed = PV_PORT_SPEED_10G;
+	  break;
+
+	case 0x2:
+	  status->speed = PV_PORT_SPEED_1G;
+	  break;
+
+	case 0x1:
+	  status->speed = PV_PORT_SPEED_100M;
+	  break;
+
+	case 0x0:
+	  status->speed = PV_PORT_SPEED_10M;
+	  break;
+
+    default:
+	  status->speed = PV_PORT_SPEED_MAX;;
+	  break;
+  }
+
+  // Check if RX & TX is enable
+  asicMipmiscReadReg32(thisCpu, NG_MIPMISC_MAC_CONFIG, port_id,
+                       &macMipMiscConfigRegData);
+  asicGetFieldFromData(0, NG_MIPMISC_MAC_CONFIG, MAC_MAC_RESET_L,
+                       &IsInReset, macMipMiscConfigRegData);
+
+  if (IsInReset == 0) {
+
+    // a port in reset is not enabled
+    status->tx_enabled = false;
+    status->rx_enabled = false;
+  }
+
+  if (asicTypeofSlotPort(port_id)== BTTF_GIG_PORT){
+	 
+	  
+	 portConfig = 0;
+     asicGetFieldFromData ( 0, NG_MAC_PORT_CONFIG, NG_TX_MAC_ENABLE, &IsTxEnabled,
+                          portConfig );
+     asicGetFieldFromData ( 0, NG_MAC_PORT_CONFIG, NG_RX_MAC_ENABLE, &IsRxEnabled,
+                          portConfig );
+  }
+
+
+  return PV_FEATURE_UNAVAILABLE;
+}
+
+static int pvi_network_ports_matrix_driver_counter_clear(
+  uint32_t             node_id,
+  void                *priv,
+  struct pv_vport      port,
+  enum pv_port_counter counter)
+{
+  return PV_FEATURE_UNAVAILABLE;
+}
+
+static int pvi_network_ports_matrix_driver_counter_clear_all(
+  uint32_t        node_id,
+  void           *priv,
+  struct pv_vport port)
+{
+  return PV_FEATURE_UNAVAILABLE;
+}
+
+static int pvi_network_ports_matrix_driver_counter_read(
+  uint32_t             node_id,
+  void                *priv,
+  struct pv_vport      port,
+  enum pv_port_counter counter,
+  uint64_t            *counter_value)
+{
+  return PV_FEATURE_UNAVAILABLE;
+}
+
+static int pvi_network_ports_matrix_driver_vlan_tag_mode_set(
+  uint32_t                            node_id,
+  void                               *priv,
+  struct pv_vport                     port,
+  enum pv_network_ports_vlan_tag_mode tag_mode)
+{
+  return PV_FEATURE_UNAVAILABLE;
+}
+
+static int pvi_network_ports_matrix_driver_vlan_tag_mode_get(
+  uint32_t                             node_id,
+  void                                *priv,
+  struct pv_vport                      port,
+  enum pv_network_ports_vlan_tag_mode *tag_mode)
+{
+  return PV_FEATURE_UNAVAILABLE;
+}
+
+static int pvi_network_ports_matrix_driver_link_monitor_set(
+  uint32_t                                      node_id,
+  struct pvi_network_ports_mgr_driver_instance *driver_instance,
+  struct pv_vport                               port,
+  bool                                          enable)
+{
+  return PV_FEATURE_UNAVAILABLE;
+}
+
+static int pvi_network_ports_matrix_driver_link_monitor_get(
+  uint32_t         node_id,
+  void            *priv,
+  struct pv_vport *port)
+{
+  return PV_FEATURE_UNAVAILABLE;
+}
+
+static int pvi_network_ports_matrix_driver_link_monitor_callback_register(
+  uint32_t                        node_id,
+  void                           *priv,
+  pv_network_port_link_callback_t callback)
+{
+  return PV_FEATURE_UNAVAILABLE;
+}
+
+static int pvi_network_ports_matrix_driver_sampling_enable(
+  uint32_t node_id,
+  void    *priv,
+  bool     sampling_enable)
+{
+  return PV_FEATURE_UNAVAILABLE;
+}
+
+static int pvi_network_ports_matrix_driver_sampling_port_config_set(
+  uint32_t                                       node_id,
+  void                                          *priv,
+  struct pv_vport                                port,
+  struct pv_network_ports_sampling_configuration configuration)
+{
+  return PV_FEATURE_UNAVAILABLE;
+}
+
+static int pvi_network_ports_matrix_driver_sampling_port_config_get(
+  uint32_t                                        node_id,
+  void                                           *priv,
+  struct pv_vport                                 port,
+  struct pv_network_ports_sampling_configuration *configuration)
+{
+  return PV_FEATURE_UNAVAILABLE;
+}
+
+static int pvi_network_ports_matrix_driver_dma_port_init(
+  uint32_t node_id,
+  bool     enable)
+{
+  return PV_FEATURE_UNAVAILABLE;
+}
+
+static const struct pvi_network_ports_mgr_driver_ops network_ports_driver_ops =
+{
+  .mgr_node_initialize            =
+    pvi_network_ports_matrix_driver_node_initialize,
+  .mgr_node_uninitialize          =
+    pvi_network_ports_matrix_driver_node_uninitialize,
+  .resources_read                 =
+    pvi_network_ports_matrix_driver_resources_read,
+  .capabilities_get               =
+    pvi_network_ports_matrix_driver_capabilities_get,
+  .init               = pvi_network_ports_matrix_driver_init,
+  .autoneg_config_set =
+    pvi_network_ports_matrix_driver_autoneg_config_set,
+  .autoneg_enable                 =
+    pvi_network_ports_matrix_driver_autoneg_enable,
+  .speed_set          = pvi_network_ports_matrix_driver_speed_set,
+  .max_frame_size_set =
+    pvi_network_ports_matrix_driver_max_frame_size_set,
+  .eee_config_set                 =
+    pvi_network_ports_matrix_driver_eee_config_set,
+  .flow_ctrl_mode_set             =
+    pvi_network_ports_matrix_driver_flow_ctrl_mode_set,
+  .config_get     = pvi_network_ports_matrix_driver_config_get,
+  .config_set     = pvi_network_ports_matrix_driver_config_set,
+  .sec_config_get =
+    pvi_network_ports_matrix_driver_sec_config_get,
+  .sec_config_set                 =
+    pvi_network_ports_matrix_driver_sec_config_set,
+  .led_config_set                 =
+    pvi_network_ports_matrix_driver_led_config_set,
+  .led_config_get                 =
+    pvi_network_ports_matrix_driver_led_config_get,
+  .loopback_mode_set              =
+    pvi_network_ports_matrix_driver_loopback_mode_set,
+  .recirculation_enable           =
+    pvi_network_ports_matrix_driver_recirculation_enable,
+  .link_enable     = pvi_network_ports_matrix_driver_link_enable,
+  .enable          = pvi_network_ports_matrix_driver_enable,
+  .link_status_get =
+    pvi_network_ports_matrix_driver_link_status_get,
+  .status_get        = pvi_network_ports_matrix_driver_status_get,
+  .counter_clear     = pvi_network_ports_matrix_driver_counter_clear,
+  .counter_clear_all =
+    pvi_network_ports_matrix_driver_counter_clear_all,
+  .counter_read      = pvi_network_ports_matrix_driver_counter_read,
+  .vlan_tag_mode_set =
+    pvi_network_ports_matrix_driver_vlan_tag_mode_set,
+  .vlan_tag_mode_get              =
+    pvi_network_ports_matrix_driver_vlan_tag_mode_get,
+  .link_monitor_set               =
+    pvi_network_ports_matrix_driver_link_monitor_set,
+  .link_monitor_get               =
+    pvi_network_ports_matrix_driver_link_monitor_get,
+  .link_monitor_callback_register =
+    pvi_network_ports_matrix_driver_link_monitor_callback_register,
+  .sampling_enable                =
+    pvi_network_ports_matrix_driver_sampling_enable,
+  .sampling_port_config_set       =
+    pvi_network_ports_matrix_driver_sampling_port_config_set,
+  .sampling_port_config_get       =
+    pvi_network_ports_matrix_driver_sampling_port_config_get,
+  .dma_port_init                  = pvi_network_ports_matrix_driver_dma_port_init
+};
+
+/* Network ports Pacaure driver interface to register to the MAC manager */
+static const struct pvi_network_ports_mgr_driver_interface
+  network_ports_pacuare_driver_interface =
+{
+  .name = NETWORK_PORTS_DRIVER_NAME,
+  .arch = PVI_ARCH_BTTF_PACUARE,
+  .ops  = &network_ports_driver_ops
+};
+
+/* Network ports NEO driver interface to register to the MAC manager */
+static const struct pvi_network_ports_mgr_driver_interface
+  network_ports_neo_driver_interface =
+{
+  .name = NETWORK_PORTS_DRIVER_NAME,
+  .arch = PVI_ARCH_BTTF_NEO,
+  .ops  = &network_ports_driver_ops
+};
+
+static int pvi_network_ports_matrix_driver_probe(
+  struct  pvi_driver_instance *driver_instance)
+{
+  int status = 0;
+
+  // Check if the driver_instance is NULL
+  if (NULL == driver_instance) return PV_PARM;
+
+  /* Register Pacuare to network ports manager */
+  status = pvi_network_ports_mgr_driver_register(
+    (struct pvi_network_ports_mgr_driver_interface *)
+    &network_ports_pacuare_driver_interface);
+  if (status) return status;
+
+  /* Register NEO to network ports manager */
+  status = pvi_network_ports_mgr_driver_register(
+    (struct pvi_network_ports_mgr_driver_interface *)
+    &network_ports_neo_driver_interface);
+
+  return status;
+}
+
+static int pvi_network_ports_matrix_driver_remove(
+  struct  pvi_driver_instance *driver_instance)
+{
+  int status = 0;
+
+  // Check if the driver_instance is NULL
+  if (NULL == driver_instance) return PV_PARM;
+
+  /* Remove Pacuare from network ports manager */
+  status = pvi_network_ports_mgr_driver_remove(
+    (struct pvi_network_ports_mgr_driver_interface *)
+    &network_ports_pacuare_driver_interface);
+  if (status) return status;
+
+  /* Remove NEO from network ports manager */
+  status = pvi_network_ports_mgr_driver_remove(
+    (struct pvi_network_ports_mgr_driver_interface *)
+    &network_ports_neo_driver_interface);
+
+  return status;
+}
+
+static const struct pvi_driver_instance_id
+  pvi_network_ports_matrix_driver_instance_ids[] =
+{
+  { .compatible = "pvi_matrix_network_ports", .data = NULL },
+  {}
+};
+
+static struct pvi_driver network_ports_driver =
+{
+  .name                = NETWORK_PORTS_DRIVER_NAME,
+  .driver_instance_ids = pvi_network_ports_matrix_driver_instance_ids,
+  .probe               = pvi_network_ports_matrix_driver_probe,
+  .remove              = pvi_network_ports_matrix_driver_remove
+};
+
+PVI_DRIVER_INIT(network_ports_driver, "pvi_network_ports")
+

@@ -1,0 +1,154 @@
+
+//Feat-l2-401
+
+
+//--------------------------------------------get------------------------------------------
+
+int pv_l2_sa_entry_specs_get(uint32_t                  node_id,
+                          struct pv_mac_addr        mac,
+                          uint32_t                  vlan_number,
+                          struct pv_l2_sa_entry_specs *l2_sa_entry_specs){
+
+  int  status           = 0;
+  bool is_node_attached = false;
+
+  // ------------------------------------------------------
+  // Check if the node is attached
+  // ------------------------------------------------------
+
+  // Check if the node has been attached to the SDK library
+  status = pv_node_is_attached(node_id, &is_node_attached);
+  if (status) return status;
+
+  if (!is_node_attached) return PV_NOT_ATTACHED;
+
+  // check return parameter is not null
+  if (NULL == l2_sa_entry_specs) {
+    return PV_PARM;
+  }
+
+  status = pvi_l2_mgr_sa_entry_specs_get(node_id, mac, vlan_number, l2_sa_entry_specs);
+  return status;
+}
+//--------------------------------------------set------------------------------------------
+
+
+int pv_l2_sa_entry_specs_set(uint32_t                  node_id,
+                          struct pv_mac_addr        mac,
+                          uint32_t                  vlan_number,
+                          struct pv_l2_sa_entry_specs l2_sa_entry_specs)
+{
+  int  status           = 0;
+  bool is_node_attached = false;
+
+  // ------------------------------------------------------
+  // Check if the node is attached
+  // ------------------------------------------------------
+
+  // Check if the node has been attached to the SDK library
+  status = pv_node_is_attached(node_id, &is_node_attached);
+  if (status) return status;
+
+  if (!is_node_attached) return PV_NOT_ATTACHED;
+
+  status = pvi_l2_mgr_sa_entry_specs_set(node_id, mac, vlan_number, l2_sa_entry_specs);
+  return status;
+}
+
+//--------------------------------------------clear-----------------------------------------
+
+int pv_l2_sa_entry_specs_clear(struct pv_l2_sa_entry_specs *l2_sa_entry_specs)
+{
+  if (NULL == l2_sa_entry_specs) {
+    return PV_PARM;
+  }
+
+  // Clear the information of the l2_entry_specs struct
+  memset(l2_sa_entry_specs, 0, sizeof(struct pv_l2_sa_entry_specs));
+
+  return 0;
+}
+
+
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+//Feat-l2-402
+
+
+//--------------------------------------------get------------------------------------------
+
+int pv_l2_da_entry_specs_get(uint32_t                  node_id,
+                          struct pv_mac_addr        mac,
+                          uint32_t                  vlan_number,
+                          struct pv_l2_da_entry_specs *l2_da_entry_specs){
+
+  int  status           = 0;
+  bool is_node_attached = false;
+
+  // ------------------------------------------------------
+  // Check if the node is attached
+  // ------------------------------------------------------
+
+  // Check if the node has been attached to the SDK library
+  status = pv_node_is_attached(node_id, &is_node_attached);
+  if (status) return status;
+
+  if (!is_node_attached) return PV_NOT_ATTACHED;
+
+  // check return parameter is not null
+  if (NULL == l2_da_entry_specs) {
+    return PV_PARM;
+  }
+
+  status = pvi_l2_mgr_da_entry_specs_get(node_id, mac, vlan_number, l2_da_entry_specs);
+  return status;
+}
+//--------------------------------------------set------------------------------------------
+
+
+int pv_l2_da_entry_specs_set(uint32_t                  node_id,
+                          struct pv_mac_addr        mac,
+                          uint32_t                  vlan_number,
+                          struct pv_l2_da_entry_specs l2_da_entry_specs)
+{
+  int  status           = 0;
+  bool is_node_attached = false;
+
+  // ------------------------------------------------------
+  // Check if the node is attached
+  // ------------------------------------------------------
+
+  // Check if the node has been attached to the SDK library
+  status = pv_node_is_attached(node_id, &is_node_attached);
+  if (status) return status;
+
+  if (!is_node_attached) return PV_NOT_ATTACHED;
+
+  status = pvi_l2_mgr_da_entry_specs_set(node_id, mac, vlan_number, l2_da_entry_specs);
+  return status;
+}
+
+//--------------------------------------------clear-----------------------------------------
+
+int pv_l2_da_entry_specs_clear(struct pv_l2_da_entry_specs *l2_da_entry_specs)
+{
+  if (NULL == l2_da_entry_specs) {
+    return PV_PARM;
+  }
+
+  // Clear the information of the l2_entry_specs struct
+  memset(l2_da_entry_specs, 0, sizeof(struct pv_l2_da_entry_specs));
+
+  return 0;
+}
+
+//HEADER TO CHANGE:
+//--------------------------------------------------------------------------------------
+
+int pvi_l2_mgr_entry_specs_get(uint32_t                  node_id,
+                               struct pv_mac_addr        mac,
+                               uint32_t                  vlan_number,
+                               struct pv_l2_sa_entry_specs *l2_sa_entry_specs);
+//----------------------
+
+

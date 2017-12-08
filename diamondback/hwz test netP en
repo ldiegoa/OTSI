@@ -1,0 +1,176 @@
+
+
+/*
+ * HWz Test for multiple functions:
+ *  pv_network_ports_port_init
+ *  pv_network_ports_speed_set
+ *  pv_network_ports_link_status_get
+ *  pv_network_ports_status_get
+ *  pv_network_ports_enable
+ *  pv_network_ports_link_enable
+ */
+TEST_F(pv_network_ports_matrix, network_ports_enable) {
+  /*
+   *   port_number   = random 1G FP port among 6 and 57
+   *   out_of_range_port = random port among 0 and 1 or 58 to 60
+   */
+  uint32_t port_number = pvtest_rand.get_rnd_min_max(FIRST_1G_PORT,
+                                                     MAX_FRONT_PLANE_PORTS);
+  uint32_t out_of_range_port =
+    (rand_boolean()) ? (pvtest_rand.get_rnd() % 2) : (1 + MAX_FRONT_PLANE_PORTS +
+                                                      (pvtest_rand.get_rnd() %
+                                                       2));
+  struct pv_network_ports_status port_status = {};
+  struct pv_vport first_port_failed = {};
+  struct pv_vport out_of_range_vport = {};
+  struct pv_vport vport = {};
+
+  /*
+   *   gig_speed = random speed among 10Mbps - 100Mbps - 1Gbps
+   *   not_supported_gig_speed = random speed among 2.5 Gbps - 400 Gbps
+   */
+  pv_port_speed gig_speed =
+    (pv_port_speed)(1 << (pvtest_rand.get_rnd() % SPEED_MASK_1G));
+  pv_port_speed not_supported_gig_speed =
+    (pv_port_speed)(1 <<
+                    (pvtest_rand.get_rnd_min_max(SPEED_MASK_1G,
+                                                 SPEED_MASK_400G)));
+
+  int  status      = 0;
+
+  /* Vports initialization: */
+
+  /* Physical gig vport */
+  status = pv_vports_phys_port_init(0,
+                                    NODE_ID,
+                                    port_number,
+                                    &vport);
+  EXPECT_EQ(PV_OK, status);
+
+  /* Out of range vport */
+  status = pv_vports_phys_port_init(0,
+                                    NODE_ID,
+                                    out_of_range_port,
+                                    &out_of_range_vport);
+  EXPECT_EQ(PV_OK, status);
+
+  /* 1st Check: User tries to use an out of range port */
+  status = pv_network_ports_init(NODE_ID, out_of_range_vport, &first_port_failed);
+  EXPECT_EQ(PV_OUT_OF_RANGE, status);
+
+  /*
+   * Provided that the port was not initialized, following
+   * features must return invalid configuration
+   */
+  status = pv_network_ports_speed_set(NODE_ID,
+                                      out_of_range_vport,
+                                      gig_speed,
+                                      &first_port_failed);
+  EXPECT_EQ(PV_INVALID_CONFIG, status);
+
+  status = pv_network_ports_enable(NODE_ID,
+                                   out_of_range_vport,
+                                   gig_speed,
+                                   &first_port_failed);
+  EXPECT_EQ(PV_INVALID_CONFIG, status);
+
+  status = pv_network_ports_status_get(NODE_ID, out_of_range_vport, &port_status);
+  EXPECT_EQ(PV_INVALID_CONFIG, status);
+
+  /* 2nd Check: User initialize a valid physical GIG FP port: */
+  status = pv_network_ports_init(NODE_ID, vport, &first_port_failed);
+  EXPECT_EQ(PV_OK, status);
+
+  PVI_LOG(PV_INFO, "G Port = %d has been init", port_number);
+
+  // User attempts to link up a port before setting a valid speed
+  status =
+    pv_network_ports_link_enable(NODE_ID, vport, true, &first_port_failed);
+  EXPECT_EQ(PV_INVALID_CONFIG, status);
+
+  // User proceeds to set speed to an initialized port
+  status = pv_network_ports_speed_set(NODE_ID,
+                                      vport,
+                                      gig_speed,
+                                      &first_port_failed);
+  EXPECT_EQ(PV_OK, status);
+
+  status = pv_network_ports_status_get(NODE_ID, vport, &port_status);
+  EXPECT_EQ(PV_OK,     status);
+  EXPECT_EQ(gig_speed, port_status.speed);
+  EXPECT_EQ(FALSE,     port_status.link);
+  EXPECT_EQ(FALSE,     port_status.tx_enabled);
+  EXPECT_EQ(FALSE,     port_status.rx_enabled);
+
+  // User attempts to link enable a port before link up the port
+  status = pv_network_ports_enable(NODE_ID, vport, true, &first_port_failed);
+  EXPECT_EQ(PV_INVALID_CONFIG, status);
+
+  status = pv_network_ports_speed_set(NODE_ID,
+                                      vport,
+                                      gig_speed,
+                                      &first_port_failed);
+  EXPECT_EQ(PV_OK, status);
+
+  // User tries to set a not supported speed to the port
+  status = pv_network_ports_speed_set(NODE_ID,
+                                      vport,
+                                      not_supported_gig_speed,
+                                      &first_port_failed);
+  EXPECT_EQ(PV_OUT_OF_RANGE, status);
+
+  // User performs a link up and then a port enable
+  status =
+    pv_network_ports_link_enable(NODE_ID, vport, true, &first_port_failed);
+  EXPECT_EQ(PV_OK, status);
+
+  status = pv_network_ports_status_get(NODE_ID, vport, &port_status);
+  EXPECT_EQ(PV_OK,     status);
+  EXPECT_EQ(gig_speed, port_status.speed);
+  EXPECT_EQ(TRUE,      port_status.link);
+  EXPECT_EQ(FALSE,     port_status.tx_enabled);
+  EXPECT_EQ(FALSE,     port_status.rx_enabled);
+
+  status = pv_network_ports_enable(NODE_ID, vport, true, &first_port_failed);
+  EXPECT_EQ(PV_OK,     status);
+
+  status = pv_network_ports_status_get(NODE_ID, vport, &port_status);
+  EXPECT_EQ(PV_OK,     status);
+  EXPECT_EQ(gig_speed, port_status.speed);
+  EXPECT_EQ(TRUE,      port_status.link);
+  EXPECT_EQ(TRUE,      port_status.tx_enabled);
+  EXPECT_EQ(TRUE,      port_status.rx_enabled);
+
+  // User tries to set a speed in a link up port
+  status = pv_network_ports_speed_set(NODE_ID,
+                                      vport,
+                                      gig_speed,
+                                      &first_port_failed);
+  EXPECT_EQ(PV_BUSY, status);
+
+  // User attempts to initialize a port already initialized
+  status = pv_network_ports_init(NODE_ID, vport, &first_port_failed);
+  EXPECT_EQ(PV_BUSY, status);
+
+  // User performs a port disable and then a link down:
+  status = pv_network_ports_enable(NODE_ID, vport, false, &first_port_failed);
+  EXPECT_EQ(PV_OK,     status);
+
+  status = pv_network_ports_status_get(NODE_ID, vport, &port_status);
+  EXPECT_EQ(PV_OK,     status);
+  EXPECT_EQ(gig_speed, port_status.speed);
+  EXPECT_EQ(TRUE,      port_status.link);
+  EXPECT_EQ(FALSE,     port_status.tx_enabled);
+  EXPECT_EQ(FALSE,     port_status.rx_enabled);
+
+  status =
+    pv_network_ports_link_enable(NODE_ID, vport, false, &first_port_failed);
+  EXPECT_EQ(PV_OK, status);
+
+  status = pv_network_ports_status_get(NODE_ID, vport, &port_status);
+  EXPECT_EQ(PV_OK,     status);
+  EXPECT_EQ(gig_speed, port_status.speed);
+  EXPECT_EQ(FALSE,     port_status.link);
+  EXPECT_EQ(FALSE,     port_status.tx_enabled);
+  EXPECT_EQ(FALSE,     port_status.rx_enabled);
+}

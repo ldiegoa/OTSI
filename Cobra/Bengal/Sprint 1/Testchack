@@ -1,0 +1,66 @@
+Test VLAN set get VID to a port:
+
+> Create a non phys port
+> Create a phys port
+> Calling default vid set/get without having initialized VLANS feature
+> Initialize the VLANS FLI
+> Test invalid parameters for vid_set and vid_get
+- Use a NULL vid
+- Set the default VID of a vport that is not a phys/bitmap
+- Get the default VID of a port that doesn't have a default VID
+- Set the default VID of a vport with a different node ID
+> Test setting a VID to a phys port
+- Set the default VID of the port
+- Get the default VID of the port
+- Compare the VIDs and check they are equal                                                    
+> Test setting a VID to a bitmap
+- Create a bitmap
+- Add the phys port to the bitmap
+- Create another phys_port
+- Add the phys_port to the bitmap
+- Set a VID for both ports
+- Set the default VID of the bitmap
+- Get the default VID of both ports
+- Compare the both VIDs and check they are equal                                                                         
+> Remove port's VID (set it to 0)
+ - Set default VID to 0 of a valid port
+ - Get the default vid from the port where vid has been removed
+> Uninitialize
+
+
+----------------------------------------------------------------------------------------
+Test set/get protocol VID of a port
+
+> Create a non phys port
+> Create a phys port
+> Create a bitmap
+> Calling default vid set/get without having initialized VLANS feature
+> Calling deafult vid set/get without having initialized VLANS feature
+> Initialize the VLANS FLI
+> Test invalid parameters for vid_set and vid_get
+- Set the default VID of a vport that is not a phys/bitmap
+- Get the default VID of a port that doesn't have a default VID
+- Use a NULL vid
+- Set a protocol VID of a vport with a different node ID
+- Set a protocol VID of a vport with a different node ID
+> Test setting a VID to a phys port for a particular protocol
+- Set the default VID of the port
+- Get the default VID of the port 
+ - Compare the VIDs and check they are equal
+> Test setting a VID to a bitmap
+- Add the phys port to the bitmap
+- Create another phys_port
+- Add the phys_port to the bitmap
+- Set a VID for both ports
+- Set the default VID of the bitmap
+- Get the default VID of both ports
+- Compare the both VIDs and check they are equal                                                                         
+> Remove the default VID of a port
+- Set default VID to 0 with Wrong port parameter
+- Set default VID to 0 with a valid port
+- Get the default VID of the port removed and check it is 0
+> Uninitialize
+
+
+
+
